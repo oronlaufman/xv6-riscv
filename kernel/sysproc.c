@@ -116,6 +116,7 @@ sys_sigaction(void){
   return sigaction(signum, (struct sigaction*) act, (struct sigaction*) oldact);
 }
 
+uint64
 sys_sigprocmask(void){
   int n;
 
