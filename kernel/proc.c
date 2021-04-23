@@ -664,8 +664,8 @@ procdump(void)
 }
 
 int 
-sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
-
+sigaction (int signum, const struct sigaction *act, struct sigaction *oldact)
+{
   struct proc* p = myproc();
 
   // check signum validity
@@ -673,15 +673,21 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
     return -1;
 
   // if act in non null 
-  if(act != 0){
+  if(act != 0)
+  {
     void* prevact = p-> signalHandlers[signum];
     if(copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act, sizeof(act)))
-      return -1;
+    {
+        return -1;
+    }
 
     // if act is non null and old act is non null
-    if(oldact != 0){
+    if(oldact != 0)
+    {
       if(copyout(p->pagetable, (uint64)&oldact, (char *)&prevact, sizeof(prevact)))
+      {
         return -1;
+      }
     }
   }
 
@@ -701,4 +707,21 @@ void
 sigret(void)
 {
   
+}
+
+void
+sigstopHandler()
+{
+  struct proc *p = myproc();
+  while(!(p->pendingSignal & (1 << SIGCONT)))
+  {
+    yield();
+  }
+}
+
+void
+sigkillHandler()
+{
+  struct proc *p = myproc();
+  p->killed = 1;
 }
