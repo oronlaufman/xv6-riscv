@@ -95,3 +95,23 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigaction(void){
+  int signum;
+  uint64 act;
+  uint64 oldact;
+
+  // get the int and adesses from the stack
+  // also convert them to be pointer to our struct
+  if(argint(0, &signum) < 0)
+    return -1;
+  
+  if(argaddr(1, &act) < 0)
+    return -1;
+  
+  if(argaddr(2, &oldact) < 0)
+    return -1;
+
+  return sigaction(signum, (struct sigaction*) act, (struct sigaction*) oldact);
+}

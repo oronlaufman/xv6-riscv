@@ -58,3 +58,7 @@ struct dirent {
   char name[DIRSIZ];
 };
 
+struct sigaction {
+  void (*sa_handler) (int);
+  uint sigmask;
+};

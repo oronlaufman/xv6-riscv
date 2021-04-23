@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
 
 struct cpu cpus[NCPU];
 
@@ -660,4 +661,29 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int 
+sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
+
+  struct proc* p = myproc();
+
+  // check signum validity
+  if(signum < 0 || signum >31 || ((act != 0) && (act->sa_handler == (void*)SIGKILL || act->sa_handler == (void*)SIGSTOP)))
+    return -1;
+
+  // if act in non null 
+  if(act != 0){
+    void* prevact = p-> signalHandlers[signum];
+    if(copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act, sizeof(act)))
+      return -1;
+
+    // if act is non null and old act is non null
+    if(oldact != 0){
+      if(copyout(p->pagetable, (uint64)&oldact, (char *)&prevact, sizeof(prevact)))
+        return -1;
+    }
+  }
+
+  return 0;
 }
