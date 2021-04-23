@@ -313,6 +313,13 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+
+  // the child points also on the father signal handler
+  for(int i = 0; i < 32; i++){
+    np->signalHandlers[i] = p->signalHandlers[i];
+  }
+
+  np->signalMask= p->signalMask;
   release(&np->lock);
 
   return pid;
