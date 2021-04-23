@@ -584,18 +584,27 @@ wakeup(void *chan)
 // The victim won't exit until it tries to return
 // to user space (see usertrap() in trap.c).
 int
-kill(int pid)
+kill(int pid, int signum)
 {
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
-      p->killed = 1;
+      
+      // if kill made on a unvalid proccess
+      if(p->state == ZOMBIE || p->state == UNUSED, p->state == USED)
+        return -1;
+
+      // update the pending signles on the proc
+      uint newSignal = p->pendingSignal | (1 << signum);
+      p->pendingSignal = newSignal;
+
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
       }
+
       release(&p->lock);
       return 0;
     }
@@ -667,6 +676,7 @@ int
 sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
 
   struct proc* p = myproc();
+  struct sigaction *toadd;
 
   // check signum validity
   if(signum < 0 || signum >31 || ((act != 0) && (act->sa_handler == (void*)SIGKILL || act->sa_handler == (void*)SIGSTOP)))
@@ -677,7 +687,7 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
     void* prevact = p-> signalHandlers[signum];
     if(copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act, sizeof(act)))
       return -1;
-
+    
     // if act is non null and old act is non null
     if(oldact != 0){
       if(copyout(p->pagetable, (uint64)&oldact, (char *)&prevact, sizeof(prevact)))
