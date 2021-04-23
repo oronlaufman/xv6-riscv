@@ -142,6 +142,16 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // set defult masks and handlers
+  for(int i = 0; i < 32; i++){
+    p->signalHandlers[i] = (void*) SIG_DFL;
+    p->signalHandlersMasks[i] = 0;
+  }
+  // set other masks
+  p->pendingSignal = 0;
+  p->signalMask = 0;
+  
+
   return p;
 }
 
