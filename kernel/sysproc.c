@@ -115,3 +115,12 @@ sys_sigaction(void){
 
   return sigaction(signum, (struct sigaction*) act, (struct sigaction*) oldact);
 }
+
+sys_sigprocmask(void){
+  int n;
+
+  if(argint(0, &n) < 0)
+    return -1;
+
+  return sigprocmask((uint)n);
+}

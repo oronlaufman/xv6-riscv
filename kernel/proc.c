@@ -687,3 +687,12 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
 
   return 0;
 }
+
+uint
+sigprocmask(uint sigmask)
+{
+  struct proc *p = myproc();
+  uint ret = p->signalMask;
+  p->signalMask = sigmask;
+  return ret;
+}
