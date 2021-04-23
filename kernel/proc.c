@@ -593,7 +593,7 @@ kill(int pid, int signum)
     if(p->pid == pid){
       
       // if kill made on a unvalid proccess
-      if(p->state == ZOMBIE || p->state == UNUSED, p->state == USED)
+      if(p->state == ZOMBIE || p->state == UNUSED || p->state == USED)
         return -1;
 
       // update the pending signles on the proc
@@ -676,8 +676,7 @@ int
 sigaction (int signum, const struct sigaction *act, struct sigaction *oldact){
 
   struct proc* p = myproc();
-  struct sigaction *toadd;
-
+  
   // check signum validity
   if(signum < 0 || signum >31 || ((act != 0) && (act->sa_handler == (void*)SIGKILL || act->sa_handler == (void*)SIGSTOP)))
     return -1;
@@ -705,4 +704,10 @@ sigprocmask(uint sigmask)
   uint ret = p->signalMask;
   p->signalMask = sigmask;
   return ret;
+}
+
+void
+sigret(void)
+{
+  
 }
