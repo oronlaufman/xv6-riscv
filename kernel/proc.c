@@ -696,3 +696,9 @@ sigprocmask(uint sigmask)
   p->signalMask = sigmask;
   return ret;
 }
+
+void
+sigret(void)
+{
+  
+}

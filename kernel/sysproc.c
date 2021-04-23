@@ -125,3 +125,9 @@ sys_sigprocmask(void){
 
   return sigprocmask((uint)n);
 }
+
+uint64
+sys_sigret(void){
+  sigret();
+  return 0;
+}
