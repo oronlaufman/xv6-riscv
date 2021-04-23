@@ -661,3 +661,12 @@ procdump(void)
     printf("\n");
   }
 }
+
+uint
+sigprocmask(uint sigmask)
+{
+  struct proc *p = myproc();
+  uint ret = p->signalMask;
+  p->signalMask = sigmask;
+  return ret;
+}
