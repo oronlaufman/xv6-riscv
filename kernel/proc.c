@@ -684,8 +684,11 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact)
   // if act in non null 
   if(act != 0)
   {
-    void* prevact = p-> signalHandlers[signum];
-    if(copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act, sizeof(act)))
+    void* prevActHandler = p-> signalHandlers[signum];
+    uint prevActMask = p-> signalHandlersMasks[signum];
+
+    if(copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act->sa_handler, sizeof(act->sa_handler))||
+       copyin(p->pagetable, (char *)&p->signalHandlersMasks[signum], (uint64)&act->sigmask, sizeof(uint)))
     {
         return -1;
     }
@@ -693,7 +696,8 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact)
     // if act is non null and old act is non null
     if(oldact != 0)
     {
-      if(copyout(p->pagetable, (uint64)&oldact, (char *)&prevact, sizeof(prevact)))
+      if(copyout(p->pagetable, (uint64)&oldact->sa_handler, (char *)&prevActHandler, sizeof(prevActHandler)) || 
+         copyout(p->pagetable, (uint64)&oldact->sigmask, (char *)&prevActMask, sizeof(prevActMask)))
       {
         return -1;
       }

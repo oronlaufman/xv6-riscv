@@ -95,6 +95,7 @@ struct proc {
   uint pendingSignal;          // store the pending signals
   uint signalMask; 
   void* signalHandlers[32];
+  uint signalHandlersMasks[32];
   struct trapframe *trapframeBackup; 
 
 
