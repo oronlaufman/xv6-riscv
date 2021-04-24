@@ -120,6 +120,7 @@ exec(char *path, char **argv)
   for(int i = 0; i <32; i++){
     if((p->signalHandlers[i] != (void*) SIG_DFL) && (p->signalHandlers[i] != (void*) SIG_IGN))
       p->signalHandlers[i] = (void*) SIG_DFL;
+      p->signalHandlersMasks[i] = 0;
   }
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)

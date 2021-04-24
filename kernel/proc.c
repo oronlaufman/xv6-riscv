@@ -328,6 +328,7 @@ fork(void)
   // the child points also on the father signal handler
   for(int i = 0; i < 32; i++){
     np->signalHandlers[i] = p->signalHandlers[i];
+    np->signalHandlersMasks[i] = p->signalHandlersMasks[i];
   }
 
   np->signalMask= p->signalMask;
@@ -689,7 +690,9 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact)
   
   // check signum validity
   if(signum < 0 || signum >31 || ((act != 0) && (act->sa_handler == (void*)SIGKILL || act->sa_handler == (void*)SIGSTOP)))
+  {
     return -1;
+  }
 
   // if act in non null 
   if(act != 0)
@@ -740,6 +743,7 @@ sigstopHandler()
   {
     yield();
   }
+  
 }
 
 void
