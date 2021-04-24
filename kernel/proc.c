@@ -6,12 +6,15 @@
 #include "proc.h"
 #include "defs.h"
 #include "fs.h"
+#include "Csemaphore.h"
 
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
 
 struct proc *initproc;
+
+static int semaphores[MAX_BSEM];
 
 int nextpid = 1;
 int nexttid = 1;
@@ -21,6 +24,7 @@ struct spinlock tid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+void initializeBinSem();
 
 extern void *start_sigret_injection(void);
 extern void *end_sigret_injection(void);
@@ -365,6 +369,8 @@ void userinit(void)
 
   release(&p->lock);
   release(&p->threads[0].lock);
+
+  initializeBinSem();
 }
 
 // Grow or shrink user memory by n bytes.
@@ -1209,4 +1215,154 @@ int kthread_join(int thread_id, int *status)
     release(&curr_t->lock);
     sleep(curr_t, &wait_lock);
   }
+  p->killed = 1;
+}
+
+void
+initializeBinSem()
+{
+  for (int i = 0; i < MAX_BSEM; i++)
+  {
+    semaphores[i] = -1;
+  }
+}
+
+int
+bsem_alloc()
+{
+	for (int i = 0; i < MAX_BSEM; i++) {
+		if (semaphores[i] == -1) {
+			semaphores[i] = 1;
+			return i;
+		} 
+	}
+	return -1;
+}
+
+void
+bsem_free(int sem)
+{
+  struct proc *p;
+  // struct thread *t;
+  for(p = proc; p < &proc[NPROC]; p++)
+  {
+    // for(t = p->threads; t < &p->threads[NTHREAD]; t++)
+    // {
+    //   if (t->semaphoreNum == sem)
+    //   {
+    //     t->semaphoreNum = -1;
+    //     t->state = RUNNABLE;
+    //   }
+    // }
+  }
+  semaphores[sem] = -1;
+}
+
+void
+bsem_down(int sem)
+{
+  // struct thread *t;
+
+  acquire(&wait_lock);
+  if (semaphores[sem] == -1)
+  {
+    panic("wrong semaphore");
+  }
+
+  if (semaphores[sem] == 0)
+  {
+    // t = myThread();
+    // t->semaphoreNum = sem;
+    // t->state = BLOCKED;
+  }
+  else
+  {
+    semaphores[sem] = 0;
+  }
+  release(&wait_lock);
+}
+
+void
+bsem_up(int sem)
+{
+  // struct thread *t;
+  struct proc *p;
+
+  acquire(&wait_lock);
+  if (semaphores[sem] == -1)
+  {
+    panic("wrong semaphore");
+  }
+
+  int flag = 0;
+  for(p = proc; p < &proc[NPROC]; p++)
+  {
+    // for(t = p->threads; t < &p->threads[NTHREAD]; t++)
+    // {
+    //   if (t->semaphoreNum == sem)
+    //   {
+    //     t->semaphoreNum = -1;
+    //     t->state = RUNNABLE;
+    //     flag = 1;
+    //     break;
+    //   }
+    // }
+  }
+
+  if (flag)
+  {
+    semaphores[sem] = 1;
+  }
+  
+  release(&wait_lock);
+}
+
+int
+csem_alloc(struct counting_semaphore* sem, int initial_value)
+{
+  sem = (struct counting_semaphore *)kalloc();
+  sem->binarySemaphore1 = bsem_alloc();
+  sem->binarySemaphore2 = bsem_alloc();
+
+  if ((sem->binarySemaphore1 == -1) | (sem->binarySemaphore2 == -1))
+  {
+    return -1;
+  }
+
+  sem->value = initial_value;
+
+  if (!initial_value)
+  {
+    bsem_down(sem->binarySemaphore2);
+  }
+
+  return 0;  
+}
+
+void
+csem_free(struct counting_semaphore* sem)
+{
+  bsem_free(sem->binarySemaphore1);
+  bsem_free(sem->binarySemaphore2);
+}
+
+void
+csem_down(struct counting_semaphore* sem)
+{
+	bsem_down(sem->binarySemaphore2);
+	bsem_down(sem->binarySemaphore1);
+	sem->value--;
+	if (sem->value > 0)
+		bsem_up(sem->binarySemaphore2);
+	bsem_up(sem->binarySemaphore1);
+}
+
+void
+csem_up(struct counting_semaphore* sem)
+{
+  bsem_down(sem->binarySemaphore1);
+	sem->value++;
+	if (sem->value == 1)
+		bsem_up(sem->binarySemaphore2);
+	bsem_up(sem->binarySemaphore1);
 }
