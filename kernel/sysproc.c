@@ -77,10 +77,15 @@ uint64
 sys_kill(void)
 {
   int pid;
+  int signum;
 
   if(argint(0, &pid) < 0)
     return -1;
-  return kill(pid);
+  
+  if(argint(1, &signum) < 0)
+    return -1;
+
+  return kill(pid, signum);
 }
 
 // return how many clock tick interrupts have occurred
@@ -94,4 +99,40 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_sigaction(void){
+  int signum;
+  uint64 act;
+  uint64 oldact;
+
+  // get the int and adesses from the stack
+  // also convert them to be pointer to our struct
+  if(argint(0, &signum) < 0)
+    return -1;
+  
+  if(argaddr(1, &act) < 0)
+    return -1;
+  
+  if(argaddr(2, &oldact) < 0)
+    return -1;
+
+  return sigaction(signum, (struct sigaction*) act, (struct sigaction*) oldact);
+}
+
+uint64
+sys_sigprocmask(void){
+  int n;
+
+  if(argint(0, &n) < 0)
+    return -1;
+
+  return sigprocmask((uint)n);
+}
+
+uint64
+sys_sigret(void){
+  sigret();
+  return 0;
 }
