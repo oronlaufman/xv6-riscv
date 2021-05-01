@@ -21,6 +21,17 @@
 
 char buf[BUFSZ];
 
+//private members for sigaction
+int flag = 0;
+
+void
+assert(int x, int y)
+{
+  if (x != y)
+  {
+    exit(1);
+  }
+}
 // what if you pass ridiculous pointers to system calls
 // that read user memory with copyin?
 void
@@ -2720,6 +2731,152 @@ countfree()
   return n;
 }
 
+// create proccess with mask, then check if the mask correct
+void
+sigprocmaskTests()
+{
+  int sonPID;
+  uint FirstMask = sigprocmask(1 << 0);
+  if (FirstMask != 0)
+  {
+      printf("createMasks() failed in the FirstMask mask\n");
+      exit(1);
+  }
+  uint secondMask = sigprocmask((1 << 2) | (1 << 7));
+  if (secondMask != 1)
+  {
+      printf("createMasks() failed in the secondMask mask\n");
+      exit(1);
+  }
+  uint thirdMask = sigprocmask((1 << 5) | (1 << 7));
+  if (thirdMask != 132)
+  {
+      printf("createMasks() failed in the thirdMask mask\n");
+      exit(1);
+  }
+  if ((sonPID = fork()) == 0)
+  {
+    uint fourthMask = sigprocmask((1 << 9) | (1 << 7));
+    if (fourthMask != 160)
+    {
+        printf("createMasks() failed in fourthMask mask\n");
+        exit(1);
+    }
+  }
+  else
+  {
+    wait(&sonPID);
+    uint fifthMask = sigprocmask((1 << 9) | (1 << 7));
+    if (fifthMask == 640)
+    {
+        printf("createMasks() failed in fifthMask mask\n");
+        exit(1);
+    }  
+  }
+  
+  exit(0);
+}
+
+// private methods
+void
+raiseflag(int x)
+{
+  flag++;
+}
+
+void
+lowerflag(int x)
+{
+  flag--;
+}
+
+//  check sigaction
+void
+sigactionTests()
+{
+  struct sigaction newAct, oldAct, nulAct;
+
+  newAct.sa_handler = &raiseflag;
+  newAct.sigmask = 4;
+  oldAct.sa_handler = &lowerflag;
+  oldAct.sigmask = 3;
+  
+  if (sigaction(-2, &newAct, &oldAct) != -1)
+  {
+      printf("sigactionTests() failed in illegal mask\n");
+      exit(1);
+  }
+  
+  if (sigaction(35, &newAct, &oldAct) != -1)
+  {
+      printf("sigactionTests() failed in illegal mask\n");
+      exit(1);
+  }
+      
+  if (sigaction(SIGSTOP, &newAct, &oldAct) != -1)
+  {
+      printf("sigactionTests() failed in illegal handler - SIGSTOP\n");
+      exit(1);
+  }
+      
+  if (sigaction(SIGKILL, &newAct, &oldAct) != -1)
+  {
+      printf("sigactionTests() failed in illegal handler - SIGKILL\n");
+      exit(1);
+  } 
+
+  if (sigaction(3, 0, &oldAct) != -1)
+  {
+      printf("sigactionTests() failed in illegal handler - SIGKILL\n");
+      exit(1);
+  }
+
+  sigaction(3, &oldAct, &nulAct);
+  if (fork() == 0)
+  {
+    sigaction(3, &newAct, &oldAct);
+    if (nulAct.sa_handler != (void*) SIG_DFL || oldAct.sa_handler != &lowerflag)
+    {
+      printf("sigactionTests() failed in fork\n");
+      exit(1);
+    }
+  }
+  
+  exit(0);
+}
+
+//
+void
+signalHandlerTests()
+{  
+
+  struct sigaction* newAct = malloc(sizeof(struct sigaction));
+
+  newAct->sa_handler = &raiseflag;
+  newAct->sigmask = 5;
+
+  for (int i = 0; i < 32; i++)
+  {
+    if (i != SIGCONT && i != SIGSTOP && i != SIGKILL)
+    {
+      sigaction(i, newAct, 0);
+    }
+  }
+
+  int pid = getpid();
+  for (int i = 0; i < 32; i++)
+  {
+    if (i != SIGCONT && i != SIGSTOP && i != SIGKILL)
+    {
+      kill(pid, i);
+    }
+  }
+  printf("%d\n", flag);
+  assert(flag, 29); 
+
+  exit(0);
+}
+
 // run each test in its own process. run returns 1 if child's exit()
 // indicates success.
 int
@@ -2766,66 +2923,69 @@ main(int argc, char *argv[])
     void (*f)(char *);
     char *s;
   } tests[] = {
-    {manywrites, "manywrites"},
-    {execout, "execout"},
-    {copyin, "copyin"},
-    {copyout, "copyout"},
-    {copyinstr1, "copyinstr1"},
-    {copyinstr2, "copyinstr2"},
-    {copyinstr3, "copyinstr3"},
-    {rwsbrk, "rwsbrk" },
-    {truncate1, "truncate1"},
-    {truncate2, "truncate2"},
-    {truncate3, "truncate3"},
-    {reparent2, "reparent2"},
-    {pgbug, "pgbug" },
-    {sbrkbugs, "sbrkbugs" },
-    // {badwrite, "badwrite" },
-    {badarg, "badarg" },
-    {reparent, "reparent" },
-    {twochildren, "twochildren"},
-    {forkfork, "forkfork"},
-    {forkforkfork, "forkforkfork"},
-    {argptest, "argptest"},
-    {createdelete, "createdelete"},
-    {linkunlink, "linkunlink"},
-    {linktest, "linktest"},
-    {unlinkread, "unlinkread"},
-    {concreate, "concreate"},
-    {subdir, "subdir"},
-    {fourfiles, "fourfiles"},
-    {sharedfd, "sharedfd"},
-    {dirtest, "dirtest"},
-    {exectest, "exectest"},
-    {bigargtest, "bigargtest"},
-    {bigwrite, "bigwrite"},
-    {bsstest, "bsstest"},
-    {sbrkbasic, "sbrkbasic"},
-    {sbrkmuch, "sbrkmuch"},
-    {kernmem, "kernmem"},
-    {sbrkfail, "sbrkfail"},
-    {sbrkarg, "sbrkarg"},
-    {validatetest, "validatetest"},
-    {stacktest, "stacktest"},
-    {opentest, "opentest"},
-    {writetest, "writetest"},
-    {writebig, "writebig"},
-    {createtest, "createtest"},
-    {openiputtest, "openiput"},
-    {exitiputtest, "exitiput"},
-    {iputtest, "iput"},
-    {mem, "mem"},
-    {pipe1, "pipe1"},
-    {killstatus, "killstatus"},
-    {preempt, "preempt"},
-    {exitwait, "exitwait"},
-    {rmdot, "rmdot"},
-    {fourteen, "fourteen"},
-    {bigfile, "bigfile"},
-    {dirfile, "dirfile"},
-    {iref, "iref"},
-    {forktest, "forktest"},
-    {bigdir, "bigdir"}, // slow
+    // {manywrites, "manywrites"},
+    // {execout, "execout"},
+    // {copyin, "copyin"},
+    // {copyout, "copyout"},
+    // {copyinstr1, "copyinstr1"},
+    // {copyinstr2, "copyinstr2"},
+    // {copyinstr3, "copyinstr3"},
+    // {rwsbrk, "rwsbrk" },
+    // {truncate1, "truncate1"},
+    // {truncate2, "truncate2"},
+    // {truncate3, "truncate3"},
+    // {reparent2, "reparent2"},
+    // {pgbug, "pgbug" },
+    // {sbrkbugs, "sbrkbugs" },
+    // // // {badwrite, "badwrite" },
+    // {badarg, "badarg" },
+    // {reparent, "reparent" },
+    // {twochildren, "twochildren"},
+    // {forkfork, "forkfork"},
+    // {forkforkfork, "forkforkfork"},
+    // {argptest, "argptest"},
+    // {createdelete, "createdelete"},
+    // {linkunlink, "linkunlink"},
+    // {linktest, "linktest"},
+    // {unlinkread, "unlinkread"},
+    // {concreate, "concreate"},
+    // {subdir, "subdir"},
+    // {fourfiles, "fourfiles"},
+    // {sharedfd, "sharedfd"},
+    // {dirtest, "dirtest"},
+    // {exectest, "exectest"},
+    // {bigargtest, "bigargtest"},
+    // {bigwrite, "bigwrite"},
+    // {bsstest, "bsstest"},
+    // {sbrkbasic, "sbrkbasic"},
+    // {sbrkmuch, "sbrkmuch"},
+    // {kernmem, "kernmem"},
+    // // {sbrkfail, "sbrkfail"},
+    // {sbrkarg, "sbrkarg"},
+    // {validatetest, "validatetest"},
+    // {stacktest, "stacktest"},
+    // {opentest, "opentest"},
+    // {writetest, "writetest"},
+    // {writebig, "writebig"},
+    // {createtest, "createtest"},
+    // {openiputtest, "openiput"},
+    // {exitiputtest, "exitiput"},
+    // {iputtest, "iput"},
+    // {mem, "mem"},
+    // {pipe1, "pipe1"},
+    // // {killstatus, "killstatus"},
+    // // {preempt, "preempt"},
+    // {exitwait, "exitwait"},
+    // {rmdot, "rmdot"},
+    // {fourteen, "fourteen"},
+    // {bigfile, "bigfile"},
+    // {dirfile, "dirfile"},
+    // {iref, "iref"},
+    // {forktest, "forktest"},
+    // {bigdir, "bigdir"}, // slow
+    // {sigprocmaskTests, "sigprocmaskTests"}, 
+    // {sigactionTests, "sigactionTests"},
+    {signalHandlerTests, "signalHandlerTests"},
     { 0, 0},
   };
 

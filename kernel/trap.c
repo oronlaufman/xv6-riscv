@@ -115,6 +115,9 @@ usertrapret(void)
   x |= SSTATUS_SPIE; // enable interrupts in user mode
   w_sstatus(x);
 
+  //check signals before return to user
+  signalHandler();
+
   // set S Exception Program Counter to the saved user pc.
   w_sepc(p->trapframe->epc);
 
