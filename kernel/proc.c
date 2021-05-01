@@ -689,30 +689,24 @@ procdump(void)
 int 
 sigaction (int signum, const struct sigaction *act, struct sigaction *oldact)
 {
-  struct proc* p = myproc();
-  // check signum validity
-  if(signum < 0 || signum >31 || signum == SIGKILL || signum == SIGSTOP || !act)
+  if (signum < 0 || signum > 31 || signum == SIGKILL || signum == SIGSTOP || act ==0)
   {
     return -1;
   }
 
-  void* prevActHandler = p->signalHandlers[signum];
-  uint prevActMask = p->signalHandlersMasks[signum];
+  struct proc *p = myproc();
+  
+  if (oldact != 0)
+  {
+    copyout(p->pagetable, (uint64)&oldact->sa_handler, (char *)&p->signalHandlers[signum], sizeof(p->signalHandlers[signum]));
+    copyout(p->pagetable, (uint64)&oldact->sigmask, (char *)&p->signalHandlersMasks[signum], sizeof(p->signalMask));
+  }
 
   copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act->sa_handler, sizeof(act->sa_handler));
   copyin(p->pagetable, (char *)&p->signalHandlersMasks[signum], (uint64)&act->sigmask, sizeof(act->sigmask));
+  
+  // printf("end of sigaction %p\n", p->signalHandlers[signum]);
 
-  if(oldact != 0)
-  {
-    copyout(p->pagetable, (uint64)&oldact->sa_handler, (char *)&prevActHandler, sizeof(prevActHandler));
-    copyout(p->pagetable, (uint64)&oldact->sigmask, (char *)&prevActMask, sizeof(prevActMask));
-  }
-
-  // if (!act->sa_handler)
-  // {
-  //   printf("mask is %d\n", p->signalHandlersMasks[signum]);
-  //   printf("kaki\n");
-  // }
   return 0;
 }
 
@@ -743,13 +737,30 @@ sigret(void)
 }
 
 void
+checkCont(struct proc* p){
+  for(int i = 0; i < 32; i++){
+    if (p->signalHandlers[i] == (void *)SIGCONT)
+    {
+      p->sigcont = 1;
+    }
+  }
+  if ( p->sigcont == 0 && (p->signalHandlers[SIGCONT] == (void *)SIG_DFL && (p->pendingSignal & (1 << SIGCONT))))
+  {
+      p->sigcont = 1;
+  }
+}
+
+void
 sigstopHandler()
 {
   struct proc *p = myproc();
-  while(!p->sigcont)
+  while(!p->sigcont )
   {
+    checkCont(p);
+    printf("son yield with flag %d\n", p->pendingSignal);
     yield();
   }
+  p->sigcont = 0;
 }
 
 void
@@ -774,7 +785,8 @@ signalHandler()
     // check if the signal is pending and not masked
     if ((p->pendingSignal & signumbit) && !(p->signalMask & signumbit)  && (p->signalHandlers[i] != (void *)SIG_IGN))
     {
-      printf("%d\n", i);
+      // printf("%d\n", i);
+      // printf("%p\n", p->signalHandlers[i]);
       if (p->signalHandlers[i] == (void *)SIGCONT)
       {
         printf("%s\n", "p->signalHandlers[i] == (void *)SIGCONT");
@@ -797,12 +809,14 @@ signalHandler()
         {
           printf("%s\n", "i == SIGKILL");
           sigkillHandler();
-        }        
+          
+        }
+        p->pendingSignal ^= signumbit;        
       }
       else
       {
 
-        printf("%s\n", "default");
+        // printf("%s\n", "else");
         //1.
         // copyin(p->pagetable, (uint64)p->signalHandlers[i], (char *)p->signalHandlers[i], sizeof(p->signalHandlers[i]));
         // copyin(p->pagetable, (uint64)p->signalHandlersMasks[i], (char *)p->signalHandlersMasks[i], sizeof(p->signalHandlersMasks[i]));
@@ -813,7 +827,7 @@ signalHandler()
         p->handling = 1;
         //4.
         p->trapframe->sp -= sizeof(struct trapframe);
-        p->trapframeBackup->sp = p->trapframe->sp; //not sure that will make a backup, I think that need to make deep copy of it
+        p->trapframeBackup = (struct trapframe *)(p->trapframe->sp); //not sure that will make a backup, I think that need to make deep copy of it
         //5.
         copyout(p->pagetable, (uint64)p->trapframeBackup, (char *)p->trapframe, sizeof(struct trapframe));
         //6.
@@ -822,8 +836,8 @@ signalHandler()
         uint64 sizeOfSigret=(uint64)&end_sigret_injection - (uint64)&start_sigret_injection; 
         p->trapframe->sp -= sizeOfSigret;
         //8.
-        // copyout(p->pagetable, (uint64)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
-        memmove((void *)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
+        copyout(p->pagetable, (uint64)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
+        // copyout((void *)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
         //9.
         p->trapframe->a0 = i;
         p->trapframe->ra = p->trapframe->sp;

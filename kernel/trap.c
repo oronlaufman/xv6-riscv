@@ -91,6 +91,9 @@ usertrapret(void)
 {
   struct proc *p = myproc();
 
+  //check signals before return to user
+  signalHandler();
+
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
@@ -115,8 +118,6 @@ usertrapret(void)
   x |= SSTATUS_SPIE; // enable interrupts in user mode
   w_sstatus(x);
 
-  //check signals before return to user
-  signalHandler();
 
   // set S Exception Program Counter to the saved user pc.
   w_sepc(p->trapframe->epc);

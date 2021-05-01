@@ -23,6 +23,22 @@ char buf[BUFSZ];
 
 //private members for sigaction
 int flag = 0;
+void raiseflag(int);
+void lowerflag(int);
+// private methods
+void
+raiseflag(int x)
+{
+  flag++;
+  return;
+}
+
+void
+lowerflag(int x)
+{
+  flag--;
+  return;
+}
 
 void
 assert(int x, int y)
@@ -2777,18 +2793,7 @@ sigprocmaskTests()
   exit(0);
 }
 
-// private methods
-void
-raiseflag(int x)
-{
-  flag++;
-}
 
-void
-lowerflag(int x)
-{
-  flag--;
-}
 
 //  check sigaction
 void
@@ -2796,7 +2801,7 @@ sigactionTests()
 {
   struct sigaction newAct, oldAct, nulAct;
 
-  newAct.sa_handler = &raiseflag;
+  newAct.sa_handler = &lowerflag;
   newAct.sigmask = 4;
   oldAct.sa_handler = &lowerflag;
   oldAct.sigmask = 3;
@@ -2845,21 +2850,21 @@ sigactionTests()
   exit(0);
 }
 
+
 //
 void
 signalHandlerTests()
 {  
+  struct sigaction act;
 
-  struct sigaction* newAct = malloc(sizeof(struct sigaction));
-
-  newAct->sa_handler = &raiseflag;
-  newAct->sigmask = 5;
+  act.sa_handler = &lowerflag;
+  act.sigmask = 4;
 
   for (int i = 0; i < 32; i++)
   {
     if (i != SIGCONT && i != SIGSTOP && i != SIGKILL)
     {
-      sigaction(i, newAct, 0);
+      sigaction(i, &act, 0);
     }
   }
 
@@ -2984,7 +2989,7 @@ main(int argc, char *argv[])
     // {forktest, "forktest"},
     // {bigdir, "bigdir"}, // slow
     // {sigprocmaskTests, "sigprocmaskTests"}, 
-    // {sigactionTests, "sigactionTests"},
+    {sigactionTests, "sigactionTests"},
     {signalHandlerTests, "signalHandlerTests"},
     { 0, 0},
   };
