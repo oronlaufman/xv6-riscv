@@ -108,7 +108,8 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 int             sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 uint            sigprocmask (uint sigmask);
-void            sigret (void);
+void            sigret(void);
+void            signalHandler(void);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

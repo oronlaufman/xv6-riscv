@@ -93,13 +93,12 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
   uint pendingSignal;          // store the pending signals
-  uint signalMask; 
-  void* signalHandlers[32];
-  uint signalHandlersMasks[32];
-  struct trapframe *trapframeBackup; 
-
-
-
+  uint signalMask;             // mask of the signals to ignore from
+  uint signalMaskBackup;       // backup for signalHandler()
+  void* signalHandlers[32];    // sa_handler of act
+  uint signalHandlersMasks[32];// mask of act
+  int handling;           // flag of signalHandler()
+  int sigcont;
 
   // proc_tree_lock must be held when using this:
   struct proc *parent;         // Parent process
@@ -109,6 +108,7 @@ struct proc {
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
+  struct trapframe *trapframeBackup;  // // backup for signalHandler()
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
