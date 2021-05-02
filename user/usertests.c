@@ -23,22 +23,11 @@ char buf[BUFSZ];
 
 //private members for sigaction
 int flag = 0;
-void raiseflag(int);
-void lowerflag(int);
-// private methods
-void
-raiseflag(int x)
-{
-  flag++;
-  return;
-}
+int count = 0;
 
-void
-lowerflag(int x)
-{
-  flag--;
-  return;
-}
+void raiseFlag(int);
+void lowerFlag(int);
+void incCount(int);
 
 void
 assert(int x, int y)
@@ -2747,7 +2736,6 @@ countfree()
   return n;
 }
 
-// create proccess with mask, then check if the mask correct
 void
 sigprocmaskTests()
 {
@@ -2789,21 +2777,18 @@ sigprocmaskTests()
         exit(1);
     }  
   }
-  
+  // printf("sigprocmaskTests() succeeded\n");
   exit(0);
 }
 
-
-
-//  check sigaction
 void
 sigactionTests()
 {
-  struct sigaction newAct, oldAct, nulAct;
+  struct sigaction newAct, oldAct, nulAct1, nulAct2;
 
-  newAct.sa_handler = &lowerflag;
+  newAct.sa_handler = &raiseFlag;
   newAct.sigmask = 4;
-  oldAct.sa_handler = &lowerflag;
+  oldAct.sa_handler = &lowerFlag;
   oldAct.sigmask = 3;
   
   if (sigaction(-2, &newAct, &oldAct) != -1)
@@ -2836,49 +2821,153 @@ sigactionTests()
       exit(1);
   }
 
-  sigaction(3, &oldAct, &nulAct);
+  sigaction(3, &oldAct, &nulAct1);
   if (fork() == 0)
   {
-    sigaction(3, &newAct, &oldAct);
-    if (nulAct.sa_handler != (void*) SIG_DFL || oldAct.sa_handler != &lowerflag)
+    sigaction(3, &newAct, &nulAct2);
+    if (nulAct1.sa_handler != (void*) SIG_DFL || nulAct2.sa_handler != &lowerFlag)
     {
       printf("sigactionTests() failed in fork\n");
       exit(1);
     }
   }
   
+  // printf("sigactionTests() succeeded\n");
   exit(0);
 }
 
-
-//
 void
-signalHandlerTests()
+sendHandlerForAllBitsPlusIgnorePlusMask()
 {  
-  struct sigaction act;
+  struct sigaction act1, act2;
 
-  act.sa_handler = &lowerflag;
-  act.sigmask = 4;
+  act1.sa_handler = &incCount;
+  act1.sigmask = 4;
+  
+  act2.sa_handler = (void*)SIG_IGN;
+  act2.sigmask = 0;
+  
+  sigprocmask((1 << 12) | (1 << 22));
 
   for (int i = 0; i < 32; i++)
   {
-    if (i != SIGCONT && i != SIGSTOP && i != SIGKILL)
+    if (i != SIGSTOP && i != SIGKILL)
     {
-      sigaction(i, &act, 0);
+      sigaction(i, &act1, 0);
     }
   }
+
+  sigaction(5, &act2, 0);
 
   int pid = getpid();
   for (int i = 0; i < 32; i++)
   {
-    if (i != SIGCONT && i != SIGSTOP && i != SIGKILL)
+    if (i != SIGSTOP && i != SIGKILL)
     {
       kill(pid, i);
     }
   }
-  printf("%d\n", flag);
-  assert(flag, 29); 
+  assert(count, 27); 
 
+  exit(0);
+}
+
+void
+stopCont()
+{
+ int child, i = 0;
+ char* buff = malloc(102);
+ if ((child = fork()) == 0)
+ {
+    for (; i < 100; i++)
+    {
+      buff[i] = '.';
+    }
+    buff[i] = '/';
+
+    for (i = 0; i < 102; i++)
+    {
+      if ((buff[i] == '-' && (i == 0 || i == 101)) || (buff[i] == '/' && i != 101))
+      {
+        exit(1);
+      } 
+    }
+ }
+
+ else
+ {
+     sleep(1);
+     kill(child, SIGSTOP);
+     buff[i] = '-';
+     sleep(1);
+     kill(child,SIGCONT);
+ } 
+ wait(&child); 
+
+ exit(0); 
+}
+
+void
+stopContInHandler()
+{
+ int child, i = 0;
+ char* buff = malloc(102);
+
+ struct sigaction act;
+
+ act.sa_handler = (void*)SIGCONT;
+ act.sigmask = 0;
+ sigaction(5, &act, 0);
+
+ if ((child = fork()) == 0)
+ {
+    for (; i < 100; i++)
+    {
+      buff[i] = '.';
+    }
+    buff[i] = '/';
+
+    for (i = 0; i < 102; i++)
+    {
+      if ((buff[i] == '-' && (i == 0 || i == 101)) || (buff[i] == '/' && i != 101))
+      {
+        exit(1);
+      } 
+    }
+ }
+
+ else
+ {
+     sleep(1);
+     kill(child, SIGSTOP);
+     buff[i] = '-';
+     sleep(1);
+     kill(child,5);
+ } 
+ wait(&child); 
+
+ exit(0); 
+}
+
+void
+killTest(){
+  int children[5];
+  for(int i = 0 ; i < 5 ; i++)
+  {
+    if((children[i] = fork()) == 0)
+    {
+      while(1);
+    }
+  }
+  for(int i = 0 ; i < 5 ; i++)
+  {
+    kill(children[i],SIGKILL);
+  }
+  for(int i = 0 ; i < 5 ; i++)
+  {
+    wait(&children[i]);
+  }
+  
   exit(0);
 }
 
@@ -2928,69 +3017,72 @@ main(int argc, char *argv[])
     void (*f)(char *);
     char *s;
   } tests[] = {
-    // {manywrites, "manywrites"},
-    // {execout, "execout"},
-    // {copyin, "copyin"},
-    // {copyout, "copyout"},
-    // {copyinstr1, "copyinstr1"},
-    // {copyinstr2, "copyinstr2"},
-    // {copyinstr3, "copyinstr3"},
-    // {rwsbrk, "rwsbrk" },
-    // {truncate1, "truncate1"},
-    // {truncate2, "truncate2"},
-    // {truncate3, "truncate3"},
-    // {reparent2, "reparent2"},
-    // {pgbug, "pgbug" },
-    // {sbrkbugs, "sbrkbugs" },
-    // // // {badwrite, "badwrite" },
-    // {badarg, "badarg" },
-    // {reparent, "reparent" },
-    // {twochildren, "twochildren"},
-    // {forkfork, "forkfork"},
-    // {forkforkfork, "forkforkfork"},
-    // {argptest, "argptest"},
-    // {createdelete, "createdelete"},
-    // {linkunlink, "linkunlink"},
-    // {linktest, "linktest"},
-    // {unlinkread, "unlinkread"},
-    // {concreate, "concreate"},
-    // {subdir, "subdir"},
-    // {fourfiles, "fourfiles"},
-    // {sharedfd, "sharedfd"},
-    // {dirtest, "dirtest"},
-    // {exectest, "exectest"},
-    // {bigargtest, "bigargtest"},
-    // {bigwrite, "bigwrite"},
-    // {bsstest, "bsstest"},
-    // {sbrkbasic, "sbrkbasic"},
-    // {sbrkmuch, "sbrkmuch"},
-    // {kernmem, "kernmem"},
-    // // {sbrkfail, "sbrkfail"},
-    // {sbrkarg, "sbrkarg"},
-    // {validatetest, "validatetest"},
-    // {stacktest, "stacktest"},
-    // {opentest, "opentest"},
-    // {writetest, "writetest"},
-    // {writebig, "writebig"},
-    // {createtest, "createtest"},
-    // {openiputtest, "openiput"},
-    // {exitiputtest, "exitiput"},
-    // {iputtest, "iput"},
-    // {mem, "mem"},
-    // {pipe1, "pipe1"},
-    // // {killstatus, "killstatus"},
-    // // {preempt, "preempt"},
-    // {exitwait, "exitwait"},
-    // {rmdot, "rmdot"},
-    // {fourteen, "fourteen"},
-    // {bigfile, "bigfile"},
-    // {dirfile, "dirfile"},
-    // {iref, "iref"},
-    // {forktest, "forktest"},
-    // {bigdir, "bigdir"}, // slow
-    // {sigprocmaskTests, "sigprocmaskTests"}, 
+    {manywrites, "manywrites"},
+    {execout, "execout"},
+    {copyin, "copyin"},
+    {copyout, "copyout"},
+    {copyinstr1, "copyinstr1"},
+    {copyinstr2, "copyinstr2"},
+    {copyinstr3, "copyinstr3"},
+    {rwsbrk, "rwsbrk" },
+    {truncate1, "truncate1"},
+    {truncate2, "truncate2"},
+    {truncate3, "truncate3"},
+    {reparent2, "reparent2"},
+    {pgbug, "pgbug" },
+    {sbrkbugs, "sbrkbugs" },
+    // {badwrite, "badwrite" },
+    {badarg, "badarg" },
+    {reparent, "reparent" },
+    {twochildren, "twochildren"},
+    {forkfork, "forkfork"},
+    {forkforkfork, "forkforkfork"},
+    {argptest, "argptest"},
+    {createdelete, "createdelete"},
+    {linkunlink, "linkunlink"},
+    {linktest, "linktest"},
+    {unlinkread, "unlinkread"},
+    {concreate, "concreate"},
+    {subdir, "subdir"},
+    {fourfiles, "fourfiles"},
+    {sharedfd, "sharedfd"},
+    {dirtest, "dirtest"},
+    {exectest, "exectest"},
+    {bigargtest, "bigargtest"},
+    {bigwrite, "bigwrite"},
+    {bsstest, "bsstest"},
+    {sbrkbasic, "sbrkbasic"},
+    {sbrkmuch, "sbrkmuch"},
+    {kernmem, "kernmem"},
+    {sbrkfail, "sbrkfail"},
+    {sbrkarg, "sbrkarg"},
+    {validatetest, "validatetest"},
+    {stacktest, "stacktest"},
+    {opentest, "opentest"},
+    {writetest, "writetest"},
+    {writebig, "writebig"},
+    {createtest, "createtest"},
+    {openiputtest, "openiput"},
+    {exitiputtest, "exitiput"},
+    {iputtest, "iput"},
+    {mem, "mem"},
+    {pipe1, "pipe1"},
+    {killstatus, "killstatus"},
+    {preempt, "preempt"},
+    {exitwait, "exitwait"},
+    {rmdot, "rmdot"},
+    {fourteen, "fourteen"},
+    {bigfile, "bigfile"},
+    {dirfile, "dirfile"},
+    {iref, "iref"},
+    {forktest, "forktest"},
+    {bigdir, "bigdir"}, // slow
+    {sigprocmaskTests, "sigprocmaskTests"}, 
     {sigactionTests, "sigactionTests"},
-    {signalHandlerTests, "signalHandlerTests"},
+    {sendHandlerForAllBitsPlusIgnorePlusMask, "sendHandlerForAllBitsPlusIgnorePlusMask"},
+    {stopCont, "stopCont"},
+    {stopContInHandler, "stopContInHandler"},
+    {killTest, "killTest"},
     { 0, 0},
   };
 
@@ -3040,4 +3132,21 @@ main(int argc, char *argv[])
     printf("ALL TESTS PASSED\n");
     exit(0);
   }
+}
+
+void raiseFlag(int signum)
+{
+    flag = 1;
+    return;
+}
+
+void lowerFlag(int signum)
+{
+    flag = 0;
+    return;
+}
+
+void incCount(int signum)
+{
+    count++;
 }

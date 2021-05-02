@@ -607,8 +607,11 @@ kill(int pid, int signum)
     if(p->pid == pid){
       
       // if kill made on a unvalid proccess
-      if(p->state == ZOMBIE || p->state == UNUSED || p->state == USED)
+      if(p->state == ZOMBIE || p->state == UNUSED || p->state == USED || signum < 0 || signum > 31 || pid < 0) 
+      {
+        release(&p->lock);
         return -1;
+      }
 
       // update the pending signles on the proc
       uint newSignal = p->pendingSignal | (1 << signum);
@@ -744,7 +747,7 @@ checkCont(struct proc* p){
       p->sigcont = 1;
     }
   }
-  if ( p->sigcont == 0 && (p->signalHandlers[SIGCONT] == (void *)SIG_DFL && (p->pendingSignal & (1 << SIGCONT))))
+  if (p->sigcont == 0 && (p->signalHandlers[SIGCONT] == (void *)SIG_DFL && (p->pendingSignal & (1 << SIGCONT))))
   {
       p->sigcont = 1;
   }
@@ -757,7 +760,6 @@ sigstopHandler()
   while(!p->sigcont )
   {
     checkCont(p);
-    printf("son yield with flag %d\n", p->pendingSignal);
     yield();
   }
   p->sigcont = 0;
@@ -785,29 +787,22 @@ signalHandler()
     // check if the signal is pending and not masked
     if ((p->pendingSignal & signumbit) && !(p->signalMask & signumbit)  && (p->signalHandlers[i] != (void *)SIG_IGN))
     {
-      // printf("%d\n", i);
-      // printf("%p\n", p->signalHandlers[i]);
       if (p->signalHandlers[i] == (void *)SIGCONT)
       {
-        printf("%s\n", "p->signalHandlers[i] == (void *)SIGCONT");
         p->sigcont = 1;
       }
       else if (p->signalHandlers[i] == (void *)SIG_DFL)
       {
-        printf("the mask of handler %d is %d\n",i , p->signalHandlersMasks[i]);
         if (i == SIGSTOP)
         {
-          printf("%s\n", "i == SIGSTOP");
           sigstopHandler();
         }
         else if (i == SIGCONT)
         {
-          printf("%s\n", "i == SIGCONT");
           p->sigcont = 1;
         }
         else
         {
-          printf("%s\n", "i == SIGKILL");
           sigkillHandler();
           
         }
@@ -815,11 +810,7 @@ signalHandler()
       }
       else
       {
-
-        // printf("%s\n", "else");
         //1.
-        // copyin(p->pagetable, (uint64)p->signalHandlers[i], (char *)p->signalHandlers[i], sizeof(p->signalHandlers[i]));
-        // copyin(p->pagetable, (uint64)p->signalHandlersMasks[i], (char *)p->signalHandlersMasks[i], sizeof(p->signalHandlersMasks[i]));
         //2.
         p->signalMaskBackup = p->signalMask;
         p->signalMask = p->signalHandlersMasks[i];
@@ -837,7 +828,6 @@ signalHandler()
         p->trapframe->sp -= sizeOfSigret;
         //8.
         copyout(p->pagetable, (uint64)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
-        // copyout((void *)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
         //9.
         p->trapframe->a0 = i;
         p->trapframe->ra = p->trapframe->sp;
