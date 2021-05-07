@@ -20,6 +20,7 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
+  struct thread *t = mythread();
 
   begin_op();
 
@@ -100,7 +101,7 @@ exec(char *path, char **argv)
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
-  p->trapframe->a1 = sp;
+  t->trapframe->a1 = sp;
 
   // Save program name for debugging.
   for(last=s=path; *s; s++)
@@ -112,8 +113,8 @@ exec(char *path, char **argv)
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
   p->sz = sz;
-  p->trapframe->epc = elf.entry;  // initial program counter = main
-  p->trapframe->sp = sp; // initial stack pointer
+  t->trapframe->epc = elf.entry;  // initial program counter = main
+  t->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
   // reset process signal handler table
@@ -122,6 +123,14 @@ exec(char *path, char **argv)
     {
       p->signalHandlers[i] = (void*) SIG_DFL;
       p->signalHandlersMasks[i] = 0;
+    }
+  }
+
+  // terminate all other proccess threads
+  struct thread *curr_t;
+  for(curr_t = p->threads; curr_t < &p->threads[NTHREAD]; t++){
+    if(curr_t != mythread()){
+      curr_t->killed = 1;
     }
   }
 

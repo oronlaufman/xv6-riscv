@@ -31,16 +31,21 @@ static void
 readsb(int dev, struct superblock *sb)
 {
   struct buf *bp;
-
+  printf("before  bread\n");
   bp = bread(dev, 1);
+  printf("after  bread\n");
   memmove(sb, bp->data, sizeof(*sb));
+  printf("after  memmove\n");
   brelse(bp);
+  printf("after  brelse\n");
 }
 
 // Init fs
 void
 fsinit(int dev) {
+  printf("before readsb\n");
   readsb(dev, &sb);
+  printf("after  readsb\n");
   if(sb.magic != FSMAGIC)
     panic("invalid file system");
   initlog(dev, &sb);

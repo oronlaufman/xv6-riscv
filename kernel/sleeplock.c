@@ -33,10 +33,13 @@ acquiresleep(struct sleeplock *lk)
 void
 releasesleep(struct sleeplock *lk)
 {
+  printf("acquire lk 40\n");
   acquire(&lk->lk);
   lk->locked = 0;
   lk->pid = 0;
+  printf("wakeup releassleep\n");
   wakeup(lk);
+  printf("releas lk 40\n");
   release(&lk->lk);
 }
 

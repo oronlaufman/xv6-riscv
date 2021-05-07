@@ -34,20 +34,20 @@ fetchstr(uint64 addr, char *buf, int max)
 static uint64
 argraw(int n)
 {
-  struct proc *p = myproc();
+  struct thread *t = mythread();
   switch (n) {
   case 0:
-    return p->trapframe->a0;
+    return t->trapframe->a0;
   case 1:
-    return p->trapframe->a1;
+    return t->trapframe->a1;
   case 2:
-    return p->trapframe->a2;
+    return t->trapframe->a2;
   case 3:
-    return p->trapframe->a3;
+    return t->trapframe->a3;
   case 4:
-    return p->trapframe->a4;
+    return t->trapframe->a4;
   case 5:
-    return p->trapframe->a5;
+    return t->trapframe->a5;
   }
   panic("argraw");
   return -1;
@@ -107,6 +107,10 @@ extern uint64 sys_uptime(void);
 extern uint64 sys_sigprocmask(void);
 extern uint64 sys_sigaction(void);
 extern uint64 sys_sigret(void);
+extern uint64 sys_kthread_create(void);
+extern uint64 sys_kthread_id(void);
+extern uint64 sys_kthread_exit(void);
+extern uint64 sys_kthread_join(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -133,20 +137,25 @@ static uint64 (*syscalls[])(void) = {
 [SYS_sigprocmask] sys_sigprocmask,
 [SYS_sigaction] sys_sigaction,
 [SYS_sigret]  sys_sigret,
+[SYS_kthread_create]  sys_kthread_create,
+[SYS_kthread_id]  sys_kthread_id,
+[SYS_kthread_exit]  sys_kthread_exit,
+[SYS_kthread_join]  sys_kthread_join,
+
 };
 
 void
 syscall(void)
 {
   int num;
-  struct proc *p = myproc();
+  struct thread *t = mythread();
 
-  num = p->trapframe->a7;
+  num = t->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    t->trapframe->a0 = syscalls[num]();
   } else {
     printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
-    p->trapframe->a0 = -1;
+            t->tid, t->name, num);
+    t->trapframe->a0 = -1;
   }
 }
