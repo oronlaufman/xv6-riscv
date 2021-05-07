@@ -166,7 +166,6 @@ free_desc(int i)
   disk.desc[i].flags = 0;
   disk.desc[i].next = 0;
   disk.free[i] = 1;
-  printf("wakeup virto\n");
   wakeup(&disk.free[0]);
 }
 
@@ -269,16 +268,13 @@ virtio_disk_rw(struct buf *b, int write)
 
   *R(VIRTIO_MMIO_QUEUE_NOTIFY) = 0; // value is queue number
 
- printf("virtio_disk_rw before while\n");
   // Wait for virtio_disk_intr() to say request has finished.
   while(b->disk == 1) {
     sleep(b, &disk.vdisk_lock);
   }
-  printf("virtio_disk_rw after while\n");
 
   disk.info[idx[0]].b = 0;
   free_chain(idx[0]);
-  printf("end of  virtio_disk_rw\n");
   release(&disk.vdisk_lock);
 }
 
@@ -309,7 +305,6 @@ virtio_disk_intr()
 
     struct buf *b = disk.info[id].b;
     b->disk = 0;   // disk is done with buf
-    printf("wakeup virto2\n");
     wakeup(b);
 
     disk.used_idx += 1;

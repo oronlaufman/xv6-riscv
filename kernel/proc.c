@@ -19,7 +19,6 @@ int nexttid = 1;
 struct spinlock pid_lock;
 struct spinlock tid_lock;
 
-
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
@@ -41,7 +40,6 @@ void
 proc_mapstacks(pagetable_t kpgtbl) {
   struct proc *p;
   struct thread *t;
-  
   for(p = proc; p < &proc[NPROC]; p++) {
     for(t = p->threads; t < &p->threads[NTHREAD]; t++){
       char *pa = kalloc();
@@ -77,8 +75,7 @@ procinit(void)
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
-int
-cpuid()
+int cpuid()
 {
   int id = r_tp();
   return id;
@@ -86,8 +83,9 @@ cpuid()
 
 // Return this CPU's cpu struct.
 // Interrupts must be disabled.
-struct cpu*
-mycpu(void) {
+struct cpu *
+mycpu(void)
+{
   int id = cpuid();
   struct cpu *c = &cpus[id];
   return c;
@@ -115,11 +113,9 @@ mythread(void) {
 int
 allocpid() {
   int pid;
-  printf("acquire - pid_lock in: 110\n");
   acquire(&pid_lock);
   pid = nextpid;
   nextpid = nextpid + 1;
-  printf("releas - pid_lock in: 110\n");
   release(&pid_lock);
 
   return pid;
@@ -128,28 +124,21 @@ allocpid() {
 int
 alloctid() {
   int tid;
-  printf("acquire - tid_lock in: 123\n");
   acquire(&tid_lock);
   tid = nexttid;
   nexttid = nexttid + 1;
-  printf("release - tid_lock in: 123\n");
   release(&tid_lock);
-
+  
   return tid;
 }
 
 // return 1 on failure 0 on succsess
 static int
 allocThread(struct thread *t, struct proc *p, int threadNum){
-  printf("alloc thread\n");
 
   t->tid = alloctid();
   t->proc = p;
 
-  if((t->backupTrapframe = (struct trapframe *)kalloc()) == 0){
-    return 1;
-  }
-  
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&t->context, 0, sizeof(t->context));
@@ -159,7 +148,6 @@ allocThread(struct thread *t, struct proc *p, int threadNum){
   return 0;
 }
 
-
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -167,16 +155,13 @@ allocThread(struct thread *t, struct proc *p, int threadNum){
 static struct proc*
 allocproc(void)
 {
-  printf("alloc proc has ben started\n");
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++) {
-    printf("acquire p->lock in: 169 on proc: %s\n", p->name);
     acquire(&p->lock);
     if(p->state == UNUSED) {
       goto found;
     } else {
-      printf("release p->lock in: 169\n");
       release(&p->lock);
     }
   }
@@ -186,16 +171,21 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
-
   // Allocate a trapframe page.
   if((p->trapframes = kalloc()) == 0){
     freeproc(p);
-    printf("release p->lock in: 146\n");
     release(&p->lock);
     return 0;
   }
 
-    // init thread list 
+    // Allocate a trapframe page.
+  if((p->trapframeBackups = kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  // init thread list 
   for(int i = 0; i < NTHREAD; i++){
     p->threads[i].state = T_UNUSED;
     p->threads[i].signalMaskBackup = 0;
@@ -203,14 +193,13 @@ found:
     p->threads[i].chan = 0;
     p->threads[i].killed = 0;
     p->threads[i].trapframe = (struct trapframe *)p->trapframes + i;
-    // init all threads locks
+    p->threads[i].backupTrapframe = (struct trapframe *)p->trapframeBackups + i;
   }
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
-    printf("release p->lock in: 192");
     release(&p->lock);
     return 0;
   }
@@ -229,8 +218,6 @@ found:
   p->pendingSignal = 0;
   p->signalMask = 0;
 
-  printf("release p->lock in: 209\n");
-  printf("proc %d has been allocated\n",p->pid);
   return p;
 }
 
@@ -246,11 +233,7 @@ freeThread(struct thread *t){
 static void
 freeThreads(struct proc *p){
   for(int i=0; i < NTHREAD; i++){
-    acquire(&p->threads[i].lock);
-    if(p->threads[i].state != T_UNUSED){
-      freeThread(&p->threads[i]);
-    }
-    release(&p->threads[i].lock);
+    freeThread(&p->threads[i]);
   }
 }
 
@@ -276,7 +259,12 @@ freeproc(struct proc *p)
 
   if(p->trapframes)
     kfree((void*) p->trapframes);
+
+  if(p->trapframeBackups)
+    kfree((void*) p->trapframeBackups);
 }
+
+
 
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
@@ -341,7 +329,6 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-
   // allocate one user page and copy init's instructions
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
@@ -354,12 +341,10 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
-  printf("wait_lock acquire in: 331\n");
   // set proccess to be used (not runnable)
   p->state = ALIVE;
   //set thread to be runnable
   p->threads[0].state = RUNNABLE;
-  printf("wait_lock release in: 336\n");
   release(&p->lock);
   release(&p->threads[0].lock);
 }
@@ -371,7 +356,6 @@ growproc(int n)
 {
   uint sz;
   struct proc *p = myproc();
-  printf("acquire p->lock in: 351");
   // TODO sync
   // acquire(&p->lock);
   sz = p->sz;
@@ -383,7 +367,6 @@ growproc(int n)
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
   p->sz = sz;
-  printf("release p->lock in: 358\n");
   // release(&p->lock);
   return 0;
   
@@ -403,12 +386,10 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-  printf("##fork## after alloc proc\n");
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
-    printf("release p->lock in: 386\n");
     release(&np->lock);
     return -1;
   }
@@ -426,12 +407,10 @@ fork(void)
   release(&wait_lock);
   // np->trapframe->a0 = 0;
   
-
   // set thread to part of np
   acquire(&wait_lock);
   np->threads[0].proc = np;
   release(&wait_lock);
-
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -448,8 +427,6 @@ fork(void)
   np->parent = p;
   release(&wait_lock);
 
-  printf("release - wait_lock in: 419\n");
-  printf("acquire np->lock in: 422\n");
   acquire(&np->lock);
   np->state = ALIVE;
   np->threads[0].state = RUNNABLE;
@@ -461,7 +438,6 @@ fork(void)
   }
 
   np->signalMask= p->signalMask;
-  printf("release np->lock in: 430\n");
     
   release(&np->lock);
   release(&np->threads[0].lock);
@@ -479,7 +455,6 @@ reparent(struct proc *p)
   for(pp = proc; pp < &proc[NPROC]; pp++){
     if(pp->parent == p){
       pp->parent = initproc;
-      printf("initproc wakeup\n");
       wakeup(initproc);
     }
   }
@@ -511,7 +486,7 @@ waitToOthers(struct proc *p, struct thread *t){
     ready = 1;
     for (th = p->threads; th < &p->threads[NTHREAD]; th++){
       if(t != th){
-        if(t->state !=T_UNUSED && t->state != T_ZOMBIE)
+        if(th->state !=T_UNUSED && th->state != T_ZOMBIE)
           ready = 0;
       }
     }
@@ -523,55 +498,54 @@ waitToOthers(struct proc *p, struct thread *t){
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
-void
-exit(int status)
+void exit(int status)
 {
   struct proc *p = myproc();
+  struct thread *t = mythread();
 
-  if(p == initproc)
+  if (p == initproc)
     panic("init exiting");
 
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
+  for (int fd = 0; fd < NOFILE; fd++)
+  {
+    if (p->ofile[fd])
+    {
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
     }
   }
-  acquire(&p->lock);
-  killAllChildrens(p, mythread());
-  release(&p->lock);
 
   begin_op();
   iput(p->cwd);
   end_op();
   p->cwd = 0;
 
-  waitToOthers(p, mythread());
-  
-  printf("acquire wait_lock in: 479\n");
-  acquire(&wait_lock);
+  acquire(&p->lock);
+  killAllChildrens(p,t);
+  release(&p->lock);
 
+  waitToOthers(p,t);
+
+  acquire(&wait_lock);
   // Give any children to init.
   reparent(p);
 
   // Parent might be sleeping in wait().
-  printf("wakeup wakeup\n");
   wakeup(p->parent);
-  
-  acquire(&p->lock);
-  // update thread 
-  mythread()->state = T_ZOMBIE;
-  mythread()->xstate = status;
-  p->state = ZOMBIE;
-  p->xstate = status;
 
+  acquire(&p->lock);
+  t->xstate = status;
+  t->state = T_ZOMBIE;
+  p->xstate = status;
+  p->state = ZOMBIE;
   release(&p->lock);
+
+  acquire(&t->lock);
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
-  acquire(&mythread()->lock);
   sched();
   panic("zombie exit");
 }
@@ -584,7 +558,6 @@ wait(uint64 addr)
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
-  printf("acquire wait_lock in: 508\n");
   acquire(&wait_lock);
 
   for(;;){
@@ -593,7 +566,6 @@ wait(uint64 addr)
     for(np = proc; np < &proc[NPROC]; np++){
       if(np->parent == p){
         // make sure the child isn't still in exit() or swtch().
-        printf("acquire np->lock in: 517\n");
         acquire(&np->lock);
 
         havekids = 1;
@@ -602,27 +574,21 @@ wait(uint64 addr)
           pid = np->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
                                   sizeof(np->xstate)) < 0) {
-            printf("release - np->lock in: 524\n");          
             release(&np->lock);
-            printf("release - wait_lock in: 526\n");
             release(&wait_lock);
             return -1;
           }
           freeproc(np);
-          printf("release - np->lock in: 531\n");          
           release(&np->lock);
-          printf("release - wait_lock in: 533\n");
           release(&wait_lock);
           return pid;
         }
-        printf("release - np->lock in: 537\n");
         release(&np->lock);
       }
     }
 
     // No point waiting if we don't have any children.
     if(!havekids || p->killed){
-      printf("release - wait_lock in: 544\n");
       release(&wait_lock);
       return -1;
     }
@@ -645,14 +611,12 @@ scheduler(void)
   struct proc *p;
   struct thread *t;
   struct cpu *c = mycpu();
-  printf("started scheduler\n");
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       // if the proc is terminated jump to the next one
-      // TODO - check if it is OK ?
       if(p->state == UNUSED || p->state == ZOMBIE || p->state == UNUSED){
         continue;
       }
@@ -666,7 +630,6 @@ scheduler(void)
           // before jumping back to us.
           // p->state = USED;
           c->proc = p;
-          printf("thread: %d is RUNNING unde proc: %s\n", t->tid, proc->name);
           t->state = RUNNING;
           c->thread = t;
           swtch(&c->context, &t->context);
@@ -675,11 +638,9 @@ scheduler(void)
           c->proc = 0;
           c->thread = 0;
         }
-        printf("%d is about to release its lock in schduler\n", t->tid);
         release(&t->lock);
       }
     }
-    
   }
 }
 
@@ -696,7 +657,6 @@ sched(void)
   int intena;
   // struct proc *p = myproc();
   struct thread *t = mythread();
-  printf("noff: %d\n",mycpu()->noff);
 
   if(!holding(&t->lock))
     panic("sched t->lock");
@@ -717,11 +677,9 @@ void
 yield(void)
 {
   struct thread *t = mythread();
-  printf("acquire p->lock in: 623\n");
   acquire(&t->lock);
   t->state = RUNNABLE;
   sched();
-  printf("releas p->lock in: 623\n");
   release(&t->lock);
 }
 
@@ -733,7 +691,6 @@ forkret(void)
   static int first = 1;
 
   // Still holding t->lock from scheduler.
-  printf("release - mythread() in: 650 by thread:%d and proc: %s\n", mythread()->tid, mythread()->name);
   release(&mythread()->lock);
 
   if (first) {
@@ -741,11 +698,8 @@ forkret(void)
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
     first = 0;
-    printf("before fsinit\n");
     fsinit(ROOTDEV);
   }
-  printf("before usertrap\n");
-
   usertrapret();
 }
 
@@ -771,7 +725,6 @@ sleep(void *chan, struct spinlock *lk)
   t->chan = chan;
   t->state = SLEEPING;
 
-  printf("sleep sched with tid:%d and chan: %d\n", t->tid, chan);
   sched();
 
   // Tidy up.
@@ -781,6 +734,7 @@ sleep(void *chan, struct spinlock *lk)
   release(&t->lock);
   acquire(lk);
 }
+
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
@@ -803,7 +757,7 @@ wakeup(void *chan)
         release(&t->lock);
       }
     }
-    acquire(&p->lock);
+    release(&p->lock);
   }
 }
 
@@ -817,7 +771,6 @@ kill(int pid, int signum)
   struct thread *t;
 
   for(p = proc; p < &proc[NPROC]; p++){
-    printf("acquire p-lock: 732\n");
     acquire(&p->lock);
     if(p->pid == pid){
       
@@ -843,11 +796,9 @@ kill(int pid, int signum)
           release(&t->lock);
         }
       }
-
       release(&p->lock);
       return 0;
     }
-    printf("release p->lock in: 728");
     release(&p->lock);
   }
   return -1;
@@ -886,8 +837,6 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 // Print a process listing to console.  For debugging.
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
-// TODO add thread list printing ?????
-
 void
 procdump(void)
 {
@@ -895,7 +844,7 @@ procdump(void)
   
   [UNUSED]    "unused",
   [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
+  [RUNNABLE]  "runnable",
   [RUNNING]   "run   ",
   [ZOMBIE]    "zombie"
   };
@@ -1066,108 +1015,213 @@ signalHandler()
 int
 kthread_create(void(*start_func)(), void *stack)
 {
+  //printf("in kthread_create p: %p t: %p or %d\n",myproc(),mythread(),mythread()->index);
+
   struct proc *p = myproc();
   struct thread *t;
-  int index = 0;
-  for(t = p->threads; t < &proc->threads[NTHREAD]; t++) {
-    acquire(&t->lock); 
-    if(t->state == T_UNUSED) {
+  //printf("about to acquire p->lock in kthread_create %p id : d\n",mythread(),mythread()->index);
+
+  acquire(&p->lock); //probably vital, as we dont want the process to be freed during create a new thread.
+  
+  int i = 0; // will denote the index in the table for the new created thread
+
+  //check for an empty spot in p->threads to allocate a new thread
+  for (t = p->threads; t < &p->threads[NTHREAD]; t++)
+  {
+    //printf("about to acquire in kthread_create %p id : d\n",t,t->index);
+    acquire(&t->lock);
+    //printf(" acquired in kthread_create %p id : d\n",t,t->index);
+
+    if (t->state == T_UNUSED)
+    {
+      //printf("found thread_is %p\n", t);
+      //important to change to used. we unlock the p, so now the process can again try to create a new thread. so we want to tell him that this slot is already took.
+      // maybe used it s not neccessery due to the locked t we hold.
+      t->state = T_USED;
+      release(&p->lock);
       goto found;
     }
-    index++;
+    else
+    {
+      release(&t->lock);
+    }
+    i++;
   }
-  printf("t->lock in: 876");      
-  release(&t->lock);
-  return 0;
+  // in case all slots are full, return -1 for a failure.
+  release(&p->lock);
+  return -1;
 
 found:
-  t->tid = allocpid();
-  t->state = USED;
+  //printf("in kthread_create p: %p, found unused thread,:%d my thread is %d\n",myproc(), i, mythread()->index);
 
-  if(allocThread(&p->threads[index], p, index)){
-    freeThread(t);
+  if (allocThread(t,p,i) < 0) //TODO initthread can not return somthing else than 0, so maybe change here
+  {
+    // failure
     t->state = UNUSED;
-    p->state = UNUSED;
+    freeThread(t);
     release(&t->lock);
-    return 0;
+    return -1;
   }
-  printf("release t->lock in: 887\n");
-  
+  //printf("t-p->threads is %d\n", t - p->threads);
+
+  //copy the curr thread trapframe to the new thread and change its registers
+  *(t->trapframe) = *(mythread()->trapframe);
+  t->trapframe->sp = (uint64)stack + MAXSTACKSIZE - 16;
+  t->trapframe->epc = (uint64)start_func;
+
+  // now we can finaly change to runnable, after we finished the creation
+  t->state = RUNNABLE; //TODO: I'm not sure it is not the right place
+  //printf("in kthread_create, before return\n");
+
+  release(&t->lock);
   return t->tid;
 }
 
-
-int
-kthread_id(){
-  int tid =  mythread()->tid;
-  if(tid == 0)
-    return -1;
-  return tid;
+int kthread_id(void)
+{
+  return mythread()->tid;
 }
 
-void
-kthread_exit(int status){
-  // update thread status before exisiting to be terminated
-  mythread()->xstate = status;
-  mythread()->state = ZOMBIE;
-
+void kthread_exit(int status)
+{
+  //printf("in kthread exit,p: %p t: %p id is: %d\n", myproc(), mythread(), mythread()->index);
   struct proc *p = myproc();
-  struct thread *t;
+  struct thread *t = mythread();
 
-  // wake up all thread that sleep on this thread
-  // before it terminates forgood and creates deadlock
-  printf("exitthread wakeup\n");
-  wakeup(&mythread()->tid);
+  struct thread *nt;
+  int found = 0;
+
+
+  //here we check if we are the last thread that alive. its important to change to "zombie" right before we leave the function,
+  //in addition we may be the last thread so we dont want to change to "zombie" until we assure there are still alive thread.
+  //very important, to call "wake up" AFTER we change to zombie state, otherwise kthread join may miss this thread.
+  //lock here its vital to ensure two threads think they are not the last.
   acquire(&p->lock);
-  // check its the last thread
-  int onlyThread = 1;
-  for(t = p->threads; t < &p->threads[NTHREAD]; t++){
-    if(t != mythread()){
-      if(t != mythread() && t->state != T_ZOMBIE &&  t->state != T_UNUSED){
-        onlyThread = 0;
+  for (nt = p->threads; nt < &p->threads[NTHREAD]; nt++)
+  {
+    if (nt != t)
+    {
+      //printf("in kthread exit, bfore acquire %p id: %d \n", nt,mythread()->index);
+      acquire(&nt->lock);
+      //printf("in kthread exit, acquired %p id: %d \n", nt,mythread()->index);
+      if (nt->state != T_UNUSED && nt->state != T_ZOMBIE)
+      {
+        //printf("kthread exit, found alive t: %p his status %d\n", nt,nt->state);
+        found = 1;
+        release(&nt->lock);
         break;
       }
+      release(&nt->lock);
     }
   }
+  if (found == 0)
+  {
+    //in case we are the last thread, we will perform exit(), so meanwhile dont change to ZOMBIE
+    
+    acquire(&t->lock);
+    t->xstate = status;
+    release(&t->lock);
 
-  // didn't found other runnable threads
-  if(onlyThread)
+    //imporant to release just after we change the status. now we can let another thread to check if he is the last
+
+    release(&p->lock);
+
+    //printf("e\n");//TODO delete
+    wakeup(t); //TODO: maybe unnecessery, because if we are the last, no one should wait for us.
+
     exit(status);
-
-  release(&p->lock);
-
-  acquire(&t->lock);
-  sched();
-  release(&t->lock);
-};
-
-int
-kthread_join(int thread_id, int* status){
-
-  struct proc *p = myproc();
-  struct thread *t;
-
-  // wake up all thread that sleep on this thread
-  // before it terminates forgood and creates deadlock
-  wakeup(&mythread()->tid);
-  acquire(&wait_lock);
-  // check its the last thread
-  for(t = p->threads; t < &p->threads[NTHREAD]; t++){
-    if(t->tid == thread_id){
-      if(t->state == T_ZOMBIE){
-        // wrtie in status threads exist status
-        copyout(p->pagetable, (uint64)&status, (char *)&t->xstate, sizeof(int));
-        release(&wait_lock);
-        return 0;
-      }
-      else if(t->state != T_UNUSED){
-        sleep(&thread_id, &wait_lock);
-        copyout(p->pagetable, (uint64)&status, (char *)&t->xstate, sizeof(int));
-        release(&wait_lock);
-        return 0;
-      }
-    }
   }
-  release(&wait_lock);
-  return -1;
+  else
+  {
+    //printf("in kthread exit p: %p t: %p  found alive threads\n", myproc(),t);
+    
+    // in case some threads still alive, we change to zombie and then exit.
+    acquire(&t->lock);
+    t->xstate = status;
+    t->state = T_ZOMBIE;
+    release(&t->lock);
+
+    //imporant to release just after we change the status. now we can let another thread to check if he is the last
+    release(&p->lock);
+
+    //wake up should be called without any locks. 
+    wakeup(t);
+    acquire(&t->lock);
+    //printf("e\n");//TODO delte
+      
+
+    sched();
+    panic("zombie thread exit");
+  }
+  
+  return;
+}
+
+int kthread_join(int thread_id, int *status)
+{
+  //TODO: how we should treat the status?
+  //printf("in kthread join wait for id: %d\n", thread_id);
+  //"kthread join is between threads in the same process."
+  //"in kthread_join should we free thread thread_id that we wait to exit?" "Yes, you should free it."
+  struct proc *p = myproc();
+  struct thread *t = mythread();
+
+  struct thread *nt;
+  int found;
+
+
+  // go over table and check for the specified thread_id .
+  found = 0;
+  for (nt = p->threads; nt < &p->threads[NTHREAD]; nt++)
+  {
+    //printf("nt id is %d\n", nt->tid);//TODO delete
+
+    acquire(&nt->lock);
+    if (nt->tid == thread_id && nt != t)
+    {
+      //printf("in kthread join, found thread ! his id is %p\n", nt);
+
+      found = 1;
+      release(&nt->lock);
+
+      break;
+    }
+    release(&nt->lock);
+  }
+  if (!found)
+  {
+    return -1;
+  }
+  acquire(&wait_lock);
+
+  for (;;)
+  {
+    //printf("in kthread join, in main loop. my id is %d\n", t->tid);
+
+    acquire(&nt->lock);
+
+    //in case the thread has already been freed or reallocated
+    if (t->killed == 1 || nt->tid != thread_id)
+    {
+
+      release(&nt->lock);
+      release(&wait_lock);
+
+      return -1;
+    }
+
+    if (nt->state == T_ZOMBIE)
+    {
+      freeThread(nt);
+
+      release(&nt->lock);
+      release(&wait_lock);
+
+      return 0;
+    }
+    //printf("in kthread join, before sleep. my id is %d\n", t->tid);
+    //in case the thread is still alive, wait until it becomes dead. it will wake up us in kthread_exit
+    release(&nt->lock);
+    sleep(nt, &wait_lock);
+  }
 }

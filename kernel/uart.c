@@ -154,7 +154,6 @@ uartstart()
     uart_tx_r += 1;
     
     // maybe uartputc() is waiting for space in the buffer.
-    printf("wakeup urat\n");
     wakeup(&uart_tx_r);
     
     WriteReg(THR, c);

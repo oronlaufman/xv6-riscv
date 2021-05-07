@@ -23,12 +23,9 @@ acquire(struct spinlock *lk)
 {
   push_off(); // disable interrupts to avoid deadlock.
   if(holding(lk)){
-    printf("acquire in: %s ,thread: %d\n", lk->name, mythread()->tid);
     panic("acquire");
   }
-  // if(mythread() != 0 && mythread()->tid != 0)
-  //   printf("thread number: %d aquired the lock: %s", mythread()->tid, lk->name);
-    
+
 
   // On RISC-V, sync_lock_test_and_set turns into an atomic swap:
   //   a5 = 1
@@ -52,7 +49,6 @@ void
 release(struct spinlock *lk)
 {
   if(!holding(lk)){
-    printf("release in lock: %s , thread: %d\n", lk->name, mythread()->tid);
     panic("release");
   }
     

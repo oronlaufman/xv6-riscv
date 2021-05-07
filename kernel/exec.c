@@ -117,20 +117,21 @@ exec(char *path, char **argv)
   t->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+
+  // terminate all other proccess threads
+  struct thread *curr_t;
+  for(curr_t = p->threads; curr_t < &p->threads[NTHREAD]; curr_t++){
+    if(curr_t != mythread()){
+      curr_t->killed = 1;
+    }
+  }
+
   // reset process signal handler table
   for(int i = 0; i <32; i++){
     if((p->signalHandlers[i] != (void*) SIG_DFL) && (p->signalHandlers[i] != (void*) SIG_IGN))
     {
       p->signalHandlers[i] = (void*) SIG_DFL;
       p->signalHandlersMasks[i] = 0;
-    }
-  }
-
-  // terminate all other proccess threads
-  struct thread *curr_t;
-  for(curr_t = p->threads; curr_t < &p->threads[NTHREAD]; t++){
-    if(curr_t != mythread()){
-      curr_t->killed = 1;
     }
   }
 

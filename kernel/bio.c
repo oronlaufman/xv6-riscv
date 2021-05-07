@@ -93,15 +93,11 @@ struct buf*
 bread(uint dev, uint blockno)
 {
   struct buf *b;
-  printf("before  bget\n");
   b = bget(dev, blockno);
   if(!b->valid) {
-    printf("before  virtio_disk_rw\n");
     virtio_disk_rw(b, 0);
-    printf("after  virtio_disk_rw\n");
     b->valid = 1;
   }
-  printf("after  bget\n");
   return b;
 }
 

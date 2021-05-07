@@ -159,7 +159,6 @@ end_op(void)
     // begin_op() may be waiting for log space,
     // and decrementing log.outstanding has decreased
     // the amount of reserved space.
-    printf("wakeup log1\n");
     wakeup(&log);
   }
   release(&log.lock);
@@ -170,7 +169,6 @@ end_op(void)
     commit();
     acquire(&log.lock);
     log.committing = 0;
-    printf("wakeup log2\n");
     wakeup(&log);
     release(&log.lock);
   }

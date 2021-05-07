@@ -21,14 +21,14 @@ struct context {
 
 //#### Thread #####//
 
-enum tstates {T_UNUSED, T_USED, T_ZOMBIE, SLEEPING, RUNNABLE, RUNNING, BLOCKED};
+enum threads { T_UNUSED , T_USED , T_ZOMBIE, SLEEPING , RUNNABLE, RUNNING };
 
 // Per-thread state
 struct thread {
   struct spinlock lock;
 
   // p->lock must be held when using these:
-  enum tstates state;           // Thread state
+  enum threads state;           // Thread state
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
@@ -114,14 +114,14 @@ struct trapframe {
 
 //#### Thread #####//
 
-enum states {UNUSED, USED, ZOMBIE, ALIVE};
+enum sproc { UNUSED, USED, ZOMBIE, ALIVE };
 
 // Per-process state
 struct proc {
   struct spinlock lock;
 
   // p->lock must be held when using these:
-  enum states state;        // Process state
+  enum sproc state;        // Process state
   // void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
@@ -133,7 +133,7 @@ struct proc {
   uint signalHandlersMasks[32];// mask of act
   int handling;                 // flag of signalHandler()
   int sigcont;
-  struct trapframe *trapframeBackups;    // shared over all thread
+  struct trapframe *trapframeBackup;    // shared over all thread
   struct thread threads[NTHREAD];       // store all proccess thread
 
   // proc_tree_lock must be held when using this:

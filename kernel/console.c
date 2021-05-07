@@ -169,7 +169,6 @@ consoleintr(int c)
         // wake up consoleread() if a whole line (or end-of-file)
         // has arrived.
         cons.w = cons.e;
-        printf("cons wakeup\n");
         wakeup(&cons.r);
       }
     }
