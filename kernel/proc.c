@@ -884,8 +884,6 @@ sigaction (int signum, const struct sigaction *act, struct sigaction *oldact)
   copyin(p->pagetable, (char *)&p->signalHandlers[signum], (uint64)&act->sa_handler, sizeof(act->sa_handler));
   copyin(p->pagetable, (char *)&p->signalHandlersMasks[signum], (uint64)&act->sigmask, sizeof(act->sigmask));
   
-  // printf("end of sigaction %p\n", p->signalHandlers[signum]);
-
   return 0;
 }
 
@@ -901,14 +899,15 @@ sigprocmask(uint sigmask)
 void
 sigret(void)
 {
+  struct thread *t = mythread();
   struct proc *p = myproc();
-  if (!p)
+  if (!t)
   {
     return;
   }
   //1.
-  copyin(p->pagetable,(char *)p->trapframe, (uint64)p->trapframeBackup,sizeof(struct trapframe));
-  p->trapframe->sp += sizeof(struct trapframe);
+  copyin(p->pagetable,(char *)t->trapframe, (uint64)t->backupTrapframe,sizeof(struct trapframe));
+  t->trapframe->sp += sizeof(struct trapframe);
   //2.
   p->signalMask = p->signalMaskBackup;
   //3.
@@ -933,7 +932,7 @@ void
 sigstopHandler()
 {
   struct proc *p = myproc();
-  while(!p->sigcont )
+  while(!p->sigcont)
   {
     checkCont(p);
     yield();
@@ -952,6 +951,7 @@ void
 signalHandler()
 {
   struct proc* p = myproc();
+  acquire(&p->signalHandlerLock);
   if (!p || p->handling)
   {
     return;
@@ -980,12 +980,12 @@ signalHandler()
         else
         {
           sigkillHandler();
-          
         }
         p->pendingSignal ^= signumbit;        
       }
       else
       {
+        struct thread *t = mythread();
         //1.
         //2.
         p->signalMaskBackup = p->signalMask;
@@ -993,25 +993,27 @@ signalHandler()
         //3.
         p->handling = 1;
         //4.
-        p->trapframe->sp -= sizeof(struct trapframe);
-        p->trapframeBackup = (struct trapframe *)(p->trapframe->sp); //not sure that will make a backup, I think that need to make deep copy of it
+        t->trapframe->sp -= sizeof(struct trapframe);
+        t->backupTrapframe = (struct trapframe *)(t->trapframe->sp); //not sure that will make a backup, I think that need to make deep copy of it
         //5.
-        copyout(p->pagetable, (uint64)p->trapframeBackup, (char *)p->trapframe, sizeof(struct trapframe));
+        copyout(p->pagetable, (uint64)t->backupTrapframe, (char *)t->trapframe, sizeof(struct trapframe));
         //6.
-        p->trapframe->epc = (uint64)p->signalHandlers[i];
+        t->trapframe->epc = (uint64)p->signalHandlers[i];
         //7.
         uint64 sizeOfSigret=(uint64)&end_sigret_injection - (uint64)&start_sigret_injection; 
-        p->trapframe->sp -= sizeOfSigret;
+        t->trapframe->sp -= sizeOfSigret;
         //8.
-        copyout(p->pagetable, (uint64)p->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
+        copyout(p->pagetable, (uint64)t->trapframe->sp, (char *)&start_sigret_injection, sizeOfSigret);
         //9.
-        p->trapframe->a0 = i;
-        p->trapframe->ra = p->trapframe->sp;
+        t->trapframe->a0 = i;
+        t->trapframe->ra = t->trapframe->sp;
         p->pendingSignal ^= signumbit;
       }
     }
   }
+  release(&p->signalHandlerLock);
 }
+
 int
 kthread_create(void(*start_func)(), void *stack)
 {

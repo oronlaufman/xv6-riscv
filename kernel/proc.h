@@ -119,6 +119,7 @@ enum sproc { UNUSED, USED, ZOMBIE, ALIVE };
 // Per-process state
 struct proc {
   struct spinlock lock;
+  struct spinlock signalHandlerLock;
 
   // p->lock must be held when using these:
   enum sproc state;        // Process state
@@ -133,7 +134,7 @@ struct proc {
   uint signalHandlersMasks[32];// mask of act
   int handling;                 // flag of signalHandler()
   int sigcont;
-  struct trapframe *trapframeBackup;    // shared over all thread
+  struct trapframe *trapframeBackups;    // shared over all thread
   struct thread threads[NTHREAD];       // store all proccess thread
 
   // proc_tree_lock must be held when using this:
@@ -143,7 +144,7 @@ struct proc {
   uint64 kstack;               // Virtual address of kernel stack
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
-  void *trapframes;            // trapframe for each thread
+  struct trapframe *trapframes;            // trapframe for each thread
   // struct trapframe *trapframe; // data page for trampoline.S
   // struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
