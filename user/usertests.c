@@ -2971,6 +2971,162 @@ killTest(){
   exit(0);
 }
 
+#define SIGKILL 9
+#define BUFSZ  ((MAXOPBLOCKS+2)*BSIZE)
+
+char buf[BUFSZ];
+
+
+int wait_sig = 0;
+
+void test_handler(int signum){
+    wait_sig = 1;
+    printf("Received sigtest\n");
+}
+
+void test_thread(){
+    printf("Thread is now running\n");
+    kthread_exit(0);
+}
+
+void signal_test(char *s){
+    int pid;
+    int testsig;
+    testsig=15;
+    struct sigaction act = {test_handler, (uint)(1 << 29)};
+    struct sigaction old;
+
+    sigprocmask(0);
+    sigaction(testsig, &act, &old);
+    if((pid = fork()) == 0){
+        while(!wait_sig)
+            sleep(1);
+        exit(0);
+    }
+    kill(pid, testsig);
+    wait(&pid);
+    printf("Finished testing signals\n");
+}
+
+void thread_test(char *s){
+    int tid;
+    int status;
+    void* stack = malloc(MAXSTACKSIZE);
+    tid = kthread_create(test_thread, stack);
+    kthread_join(tid,&status);
+
+    tid = kthread_id();
+    free(stack);
+    printf("Finished testing threads, main thread id: %d, %d\n", tid,status);
+}
+
+
+// void bsem_test(char *s){
+//     int pid;
+//     int bid = bsem_alloc();
+//     bsem_down(bid);
+//     printf("1. Parent downing semaphore\n");
+//     if((pid = fork()) == 0){
+//         printf("2. Child downing semaphore\n");
+//         bsem_down(bid);
+//         printf("4. Child woke up\n");
+//         exit(0);
+//     }
+//     sleep(5);
+//     printf("3. Let the child wait on the semaphore...\n");
+//     sleep(10);
+//     bsem_up(bid);
+
+//     bsem_free(bid);
+//     wait(&pid);
+
+//     printf("Finished bsem test, make sure that the order of the prints is alright. Meaning (1...2...3...4)\n");
+// }
+
+
+// void Csem_test(char *s){
+// 	struct counting_semaphore csem;
+//     int retval;
+//     int pid;
+    
+    
+//     retval = csem_alloc(&csem,1);
+//     if(retval==-1)
+//     {
+// 		printf("failed csem alloc");
+// 		exit(-1);
+// 	}
+//     csem_down(&csem);
+//     printf("1. Parent downing semaphore\n");
+//     if((pid = fork()) == 0){
+//         printf("2. Child downing semaphore\n");
+//         csem_down(&csem);
+//         printf("4. Child woke up\n");
+//         exit(0);
+//     }
+//     sleep(5);
+//     printf("3. Let the child wait on the semaphore...\n");
+//     sleep(10);
+//     csem_up(&csem);
+
+//     csem_free(&csem);
+//     wait(&pid);
+
+//     printf("Finished bsem test, make sure that the order of the prints is alright. Meaning (1...2...3...4)\n");
+// }
+
+
+int threadCounter = 0;
+
+void
+threadPrintMission(){
+  // TODO test the semphore with a lock
+  printf("hey I am thread number:%d\n", kthread_id());
+  threadCounter++;
+  sleep(5);
+  kthread_exit(0);
+}
+
+void 
+basicThreadTest(){
+  int status;
+  void *stack = malloc(MAXSTACKSIZE);
+  int t2 = kthread_create(threadPrintMission, stack);
+  int t3 = kthread_create(threadPrintMission, stack);
+  kthread_join(t2, &status);
+  kthread_join(t3, &status);
+  free(stack);
+  if(threadCounter != 2)
+    exit(-1);
+  
+  printf("done\n");
+  exit(0);
+}
+
+void
+threadPrintLongMission(){
+  sleep(10);
+  printf("hey I am thread number:%d\n", kthread_id());
+  kthread_exit(0);
+}
+
+void
+threadForkAndMainThreadExitWhileOtherSleepTest(){
+  void *stack = malloc(MAXSTACKSIZE);
+  int status;
+  int tid2 = kthread_create(threadPrintLongMission, stack);
+  int pid = fork(); 
+
+  if(pid == 0){
+    int t3 = kthread_create(threadPrintLongMission, stack);
+    kthread_join(t3,&status);
+    exit(0);
+  }
+
+  printf("thread number %d should not print\n", tid2);
+  exit(0);
+}
+
 // run each test in its own process. run returns 1 if child's exit()
 // indicates success.
 int
@@ -3017,72 +3173,78 @@ main(int argc, char *argv[])
     void (*f)(char *);
     char *s;
   } tests[] = {
-    {manywrites, "manywrites"},
-    {execout, "execout"},
-    {copyin, "copyin"},
-    {copyout, "copyout"},
-    {copyinstr1, "copyinstr1"},
-    {copyinstr2, "copyinstr2"},
-    {copyinstr3, "copyinstr3"},
-    {rwsbrk, "rwsbrk" },
-    {truncate1, "truncate1"},
-    {truncate2, "truncate2"},
-    {truncate3, "truncate3"},
-    {reparent2, "reparent2"},
-    {pgbug, "pgbug" },
-    {sbrkbugs, "sbrkbugs" },
+    // {manywrites, "manywrites"},
+    // {execout, "execout"},
+    // {copyin, "copyin"},
+    // {copyout, "copyout"},
+    // {copyinstr1, "copyinstr1"},
+    // {copyinstr2, "copyinstr2"},
+    // {copyinstr3, "copyinstr3"},
+    // {rwsbrk, "rwsbrk" },
+    // {truncate1, "truncate1"},
+    // {truncate2, "truncate2"},
+    // {truncate3, "truncate3"},
+    // {reparent2, "reparent2"},
+    // {pgbug, "pgbug" },
+    // {sbrkbugs, "sbrkbugs" },
     // {badwrite, "badwrite" },
-    {badarg, "badarg" },
-    {reparent, "reparent" },
-    {twochildren, "twochildren"},
-    {forkfork, "forkfork"},
-    {forkforkfork, "forkforkfork"},
-    {argptest, "argptest"},
-    {createdelete, "createdelete"},
-    {linkunlink, "linkunlink"},
-    {linktest, "linktest"},
-    {unlinkread, "unlinkread"},
-    {concreate, "concreate"},
-    {subdir, "subdir"},
-    {fourfiles, "fourfiles"},
-    {sharedfd, "sharedfd"},
-    {dirtest, "dirtest"},
-    {exectest, "exectest"},
-    {bigargtest, "bigargtest"},
-    {bigwrite, "bigwrite"},
-    {bsstest, "bsstest"},
-    {sbrkbasic, "sbrkbasic"},
-    {sbrkmuch, "sbrkmuch"},
-    {kernmem, "kernmem"},
-    {sbrkfail, "sbrkfail"},
-    {sbrkarg, "sbrkarg"},
-    {validatetest, "validatetest"},
-    {stacktest, "stacktest"},
-    {opentest, "opentest"},
-    {writetest, "writetest"},
-    {writebig, "writebig"},
-    {createtest, "createtest"},
-    {openiputtest, "openiput"},
-    {exitiputtest, "exitiput"},
-    {iputtest, "iput"},
-    {mem, "mem"},
-    {pipe1, "pipe1"},
-    {killstatus, "killstatus"},
-    {preempt, "preempt"},
-    {exitwait, "exitwait"},
-    {rmdot, "rmdot"},
-    {fourteen, "fourteen"},
-    {bigfile, "bigfile"},
-    {dirfile, "dirfile"},
-    {iref, "iref"},
-    {forktest, "forktest"},
-    {bigdir, "bigdir"}, // slow
-    {sigprocmaskTests, "sigprocmaskTests"}, 
-    {sigactionTests, "sigactionTests"},
-    {sendHandlerForAllBitsPlusIgnorePlusMask, "sendHandlerForAllBitsPlusIgnorePlusMask"},
-    {stopCont, "stopCont"},
-    {stopContInHandler, "stopContInHandler"},
-    {killTest, "killTest"},
+    // {badarg, "badarg" },
+    // {reparent, "reparent" },
+    // {twochildren, "twochildren"},
+    // {forkfork, "forkfork"},
+    // {forkforkfork, "forkforkfork"},
+    // {argptest, "argptest"},
+    // {createdelete, "createdelete"},
+    // {linkunlink, "linkunlink"},
+    // {linktest, "linktest"},
+    // {unlinkread, "unlinkread"},
+    // {concreate, "concreate"},
+    // {subdir, "subdir"},
+    // {fourfiles, "fourfiles"},
+    // {sharedfd, "sharedfd"},
+    // {dirtest, "dirtest"},
+    // {exectest, "exectest"},
+    // {bigargtest, "bigargtest"},
+    // {bigwrite, "bigwrite"},
+    // {bsstest, "bsstest"},
+    // {sbrkbasic, "sbrkbasic"},
+    // {sbrkmuch, "sbrkmuch"},
+    // {kernmem, "kernmem"},
+    // {sbrkfail, "sbrkfail"},
+    // {sbrkarg, "sbrkarg"},
+    // {validatetest, "validatetest"},
+    // {stacktest, "stacktest"},
+    // {opentest, "opentest"},
+    // {writetest, "writetest"},
+    // {writebig, "writebig"},
+    // {createtest, "createtest"},
+    // {openiputtest, "openiput"},
+    // {exitiputtest, "exitiput"},
+    // {iputtest, "iput"},
+    // {mem, "mem"},
+    // {pipe1, "pipe1"},
+    // {killstatus, "killstatus"},
+    // {preempt, "preempt"},
+    // {exitwait, "exitwait"},
+    // {rmdot, "rmdot"},
+    // {fourteen, "fourteen"},
+    // {bigfile, "bigfile"},
+    // {dirfile, "dirfile"},
+    // {iref, "iref"},
+    // {forktest, "forktest"},
+    // // {bigdir, "bigdir"}, // slow
+    // {sigprocmaskTests, "sigprocmaskTests"}, 
+    // {sigactionTests, "sigactionTests"},
+    // {sendHandlerForAllBitsPlusIgnorePlusMask, "sendHandlerForAllBitsPlusIgnorePlusMask"},
+    // {stopCont, "stopCont"},
+    // {stopContInHandler, "stopContInHandler"},
+    // {killTest, "killTest"},
+    // {basicThreadTest, "basicThreadTest"},
+    // {signal_test,"signal_test"},
+	  // {thread_test,"thread_test"},
+	  {threadForkAndMainThreadExitWhileOtherSleepTest,"thread_test"},
+	  // {bsem_test,"bsem_test"},
+	  // {Csem_test,"Csem_test"},
     { 0, 0},
   };
 
