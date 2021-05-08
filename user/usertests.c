@@ -7,7 +7,6 @@
 #include "kernel/syscall.h"
 #include "kernel/memlayout.h"
 #include "kernel/riscv.h"
-
 //
 // Tests xv6 system calls.  usertests without arguments runs them all
 // and usertests <name> runs <name> test. The test runner creates for
@@ -3021,59 +3020,59 @@ void thread_test(char *s){
 }
 
 
-// void bsem_test(char *s){
-//     int pid;
-//     int bid = bsem_alloc();
-//     bsem_down(bid);
-//     printf("1. Parent downing semaphore\n");
-//     if((pid = fork()) == 0){
-//         printf("2. Child downing semaphore\n");
-//         bsem_down(bid);
-//         printf("4. Child woke up\n");
-//         exit(0);
-//     }
-//     sleep(5);
-//     printf("3. Let the child wait on the semaphore...\n");
-//     sleep(10);
-//     bsem_up(bid);
+void bsem_test(char *s){
+    int pid;
+    int bid = bsem_alloc();
+    bsem_down(bid);
+    printf("1. Parent downing semaphore\n");
+    if((pid = fork()) == 0){
+        printf("2. Child downing semaphore\n");
+        bsem_down(bid);
+        printf("4. Child woke up\n");
+        exit(0);
+    }
+    sleep(5);
+    printf("3. Let the child wait on the semaphore...\n");
+    sleep(10);
+    bsem_up(bid);
 
-//     bsem_free(bid);
-//     wait(&pid);
+    bsem_free(bid);
+    wait(&pid);
 
-//     printf("Finished bsem test, make sure that the order of the prints is alright. Meaning (1...2...3...4)\n");
-// }
+    printf("Finished bsem test, make sure that the order of the prints is alright. Meaning (1...2...3...4)\n");
+}
 
 
-// void Csem_test(char *s){
-// 	struct counting_semaphore csem;
-//     int retval;
-//     int pid;
+void Csem_test(char *s){
+	struct counting_semaphore csem;
+    int retval;
+    int pid;
     
     
-//     retval = csem_alloc(&csem,1);
-//     if(retval==-1)
-//     {
-// 		printf("failed csem alloc");
-// 		exit(-1);
-// 	}
-//     csem_down(&csem);
-//     printf("1. Parent downing semaphore\n");
-//     if((pid = fork()) == 0){
-//         printf("2. Child downing semaphore\n");
-//         csem_down(&csem);
-//         printf("4. Child woke up\n");
-//         exit(0);
-//     }
-//     sleep(5);
-//     printf("3. Let the child wait on the semaphore...\n");
-//     sleep(10);
-//     csem_up(&csem);
+    retval = csem_alloc(&csem,1);
+    if(retval==-1)
+    {
+		printf("failed csem alloc");
+		exit(-1);
+	}
+    csem_down(&csem);
+    printf("1. Parent downing semaphore\n");
+    if((pid = fork()) == 0){
+        printf("2. Child downing semaphore\n");
+        csem_down(&csem);
+        printf("4. Child woke up\n");
+        exit(0);
+    }
+    sleep(5);
+    printf("3. Let the child wait on the semaphore...\n");
+    sleep(10);
+    csem_up(&csem);
 
-//     csem_free(&csem);
-//     wait(&pid);
+    wait(&pid);
+    csem_free(&csem);
 
-//     printf("Finished bsem test, make sure that the order of the prints is alright. Meaning (1...2...3...4)\n");
-// }
+    printf("Finished bsem test, make sure that the order of the prints is alright. Meaning (1...2...3...4)\n");
+}
 
 
 int threadCounter = 0;
@@ -3091,11 +3090,13 @@ void
 basicThreadTest(){
   int status;
   void *stack = malloc(MAXSTACKSIZE);
+  void *stack1 = malloc(MAXSTACKSIZE);
   int t2 = kthread_create(threadPrintMission, stack);
-  int t3 = kthread_create(threadPrintMission, stack);
+  int t3 = kthread_create(threadPrintMission, stack1);
   kthread_join(t2, &status);
   kthread_join(t3, &status);
   free(stack);
+  free(stack1);
   if(threadCounter != 2)
     exit(-1);
   
@@ -3113,6 +3114,8 @@ threadPrintLongMission(){
 void
 threadForkAndMainThreadExitWhileOtherSleepTest(){
   void *stack = malloc(MAXSTACKSIZE);
+  void *stack1 = malloc(MAXSTACKSIZE);
+
   int status;
   int tid2 = kthread_create(threadPrintLongMission, stack);
   int pid = fork(); 
@@ -3124,6 +3127,8 @@ threadForkAndMainThreadExitWhileOtherSleepTest(){
   }
 
   printf("thread number %d should not print\n", tid2);
+  free(stack);
+  free(stack1);
   exit(0);
 }
 
@@ -3233,18 +3238,18 @@ main(int argc, char *argv[])
     // {iref, "iref"},
     // {forktest, "forktest"},
     // // {bigdir, "bigdir"}, // slow
-    // {sigprocmaskTests, "sigprocmaskTests"}, 
-    // {sigactionTests, "sigactionTests"},
-    // {sendHandlerForAllBitsPlusIgnorePlusMask, "sendHandlerForAllBitsPlusIgnorePlusMask"},
-    // {stopCont, "stopCont"},
-    // {stopContInHandler, "stopContInHandler"},
-    // {killTest, "killTest"},
-    // {basicThreadTest, "basicThreadTest"},
-    // {signal_test,"signal_test"},
-	  // {thread_test,"thread_test"},
+    {sigprocmaskTests, "sigprocmaskTests"}, 
+    {sigactionTests, "sigactionTests"},
+    {sendHandlerForAllBitsPlusIgnorePlusMask, "sendHandlerForAllBitsPlusIgnorePlusMask"},
+    {stopCont, "stopCont"},
+    {stopContInHandler, "stopContInHandler"},
+    {killTest, "killTest"},
+    {basicThreadTest, "basicThreadTest"},
+    {signal_test,"signal_test"},
+	  {thread_test,"thread_test"},
 	  {threadForkAndMainThreadExitWhileOtherSleepTest,"thread_test"},
-	  // {bsem_test,"bsem_test"},
-	  // {Csem_test,"Csem_test"},
+	  {bsem_test,"bsem_test"},
+	  {Csem_test,"Csem_test"},
     { 0, 0},
   };
 

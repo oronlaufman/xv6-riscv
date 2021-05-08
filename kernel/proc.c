@@ -982,7 +982,7 @@ void checkCont(struct proc *p)
 void sigstopHandler()
 {
   struct proc *p = myproc();
-  while (!p->sigcont)
+  while (!p->sigcont && (p->pendingSignal & (1 << SIGSTOP)))
   {
     checkCont(p);
     yield();
