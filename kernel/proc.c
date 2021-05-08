@@ -6,7 +6,6 @@
 #include "proc.h"
 #include "defs.h"
 #include "fs.h"
-#include "Csemaphore.h"
 
 struct cpu cpus[NCPU];
 
@@ -72,7 +71,8 @@ void procinit(void)
   for (p = proc; p < &proc[NPROC]; p++)
   {
     initlock(&p->lock, "proc");
-    initlock(&p->signalHandlerLock, "signalHandlerLock");
+    // initlock(&p->signalHandlerLock, "signalHandlerLock"); TODO
+    initlock(&p->semaphoreLock, "semaphoreLock");
 
     for (t = p->threads; t < &p->threads[NTHREAD]; t++)
     {
@@ -239,6 +239,8 @@ found:
   // set other masks
   p->pendingSignal = 0;
   p->signalMask = 0;
+
+  p->semaphoreNum = -1;
 
   return p;
 }
@@ -658,8 +660,6 @@ int wait(uint64 addr)
 //    via swtch back to the scheduler.
 void scheduler(void)
 {
-  // struct proc *p;
-  // struct thread *t; TODO
   struct cpu *c = mycpu();
   c->proc = 0;
   for (;;)
@@ -676,7 +676,6 @@ void scheduler(void)
 
       for (struct thread *t = p->threads; t < &p->threads[NTHREAD]; t++)
       {
-        // printf("%d is about to acquire its lock\n", t->tid);
         acquire(&t->lock);
         if (t->state == RUNNABLE)
         {
@@ -791,9 +790,6 @@ void sleep(void *chan, struct spinlock *lk)
 // Must be called without any p->lock.
 void wakeup(void *chan)
 {
-  // struct proc *p;
-  // struct thread *t; TODO
-
   for (struct proc *p = proc; p < &proc[NPROC]; p++)
   {
     if (p->state != ALIVE)
@@ -820,9 +816,6 @@ void wakeup(void *chan)
 // to user space (see usertrap() in trap.c).
 int kill(int pid, int signum)
 {
-  // struct proc *p;
-  // struct thread *t; TODO
-
   for (struct proc *p = proc; p < &proc[NPROC]; p++)
   {
     acquire(&p->lock);
@@ -908,7 +901,6 @@ void procdump(void)
       [RUNNING] "run   ",
       [ZOMBIE] "zombie"};
   
-  // struct proc *p; TODO
   char *state;
   acquire(&wait_lock);
   printf("\n");
@@ -1230,54 +1222,45 @@ initializeBinSem()
 int
 bsem_alloc()
 {
+  acquire(&wait_lock);
 	for (int i = 0; i < MAX_BSEM; i++) {
 		if (semaphores[i] == -1) {
 			semaphores[i] = 1;
+      release(&wait_lock);
 			return i;
 		} 
 	}
+  release(&wait_lock);
 	return -1;
 }
 
 void
 bsem_free(int sem)
 {
-  struct proc *p;
-  // struct thread *t;
-  for(p = proc; p < &proc[NPROC]; p++)
-  {
-    // for(t = p->threads; t < &p->threads[NTHREAD]; t++)
-    // {
-    //   if (t->semaphoreNum == sem)
-    //   {
-    //     t->semaphoreNum = -1;
-    //     t->state = RUNNABLE;
-    //   }
-    // }
-  }
+  acquire(&wait_lock);
   semaphores[sem] = -1;
+  release(&wait_lock);
 }
 
 void
 bsem_down(int sem)
 {
-  // struct thread *t;
-
   acquire(&wait_lock);
   if (semaphores[sem] == -1)
   {
-    panic("wrong semaphore");
+    panic("wrong semaphore- down");
   }
-
-  if (semaphores[sem] == 0)
+  for (;;)
   {
-    // t = myThread();
-    // t->semaphoreNum = sem;
-    // t->state = BLOCKED;
-  }
-  else
-  {
-    semaphores[sem] = 0;
+    if (semaphores[sem] == 0)
+    {
+      sleep(&semaphores[sem], &wait_lock);
+    }
+    else
+    {
+      semaphores[sem] = 0;
+      break;
+    }
   }
   release(&wait_lock);
 }
@@ -1285,84 +1268,13 @@ bsem_down(int sem)
 void
 bsem_up(int sem)
 {
-  // struct thread *t;
-  struct proc *p;
-
   acquire(&wait_lock);
   if (semaphores[sem] == -1)
   {
-    panic("wrong semaphore");
+    panic("wrong semaphore- up");
   }
 
-  int flag = 0;
-  for(p = proc; p < &proc[NPROC]; p++)
-  {
-    // for(t = p->threads; t < &p->threads[NTHREAD]; t++)
-    // {
-    //   if (t->semaphoreNum == sem)
-    //   {
-    //     t->semaphoreNum = -1;
-    //     t->state = RUNNABLE;
-    //     flag = 1;
-    //     break;
-    //   }
-    // }
-  }
-
-  if (flag)
-  {
-    semaphores[sem] = 1;
-  }
-  
+  semaphores[sem] = 1;
+  wakeup(&semaphores[sem]);
   release(&wait_lock);
-}
-
-int
-csem_alloc(struct counting_semaphore* sem, int initial_value)
-{
-  sem = (struct counting_semaphore *)kalloc();
-  sem->binarySemaphore1 = bsem_alloc();
-  sem->binarySemaphore2 = bsem_alloc();
-
-  if ((sem->binarySemaphore1 == -1) | (sem->binarySemaphore2 == -1))
-  {
-    return -1;
-  }
-
-  sem->value = initial_value;
-
-  if (!initial_value)
-  {
-    bsem_down(sem->binarySemaphore2);
-  }
-
-  return 0;  
-}
-
-void
-csem_free(struct counting_semaphore* sem)
-{
-  bsem_free(sem->binarySemaphore1);
-  bsem_free(sem->binarySemaphore2);
-}
-
-void
-csem_down(struct counting_semaphore* sem)
-{
-	bsem_down(sem->binarySemaphore2);
-	bsem_down(sem->binarySemaphore1);
-	sem->value--;
-	if (sem->value > 0)
-		bsem_up(sem->binarySemaphore2);
-	bsem_up(sem->binarySemaphore1);
-}
-
-void
-csem_up(struct counting_semaphore* sem)
-{
-  bsem_down(sem->binarySemaphore1);
-	sem->value++;
-	if (sem->value == 1)
-		bsem_up(sem->binarySemaphore2);
-	bsem_up(sem->binarySemaphore1);
 }

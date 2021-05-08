@@ -178,3 +178,39 @@ sys_kthread_join(void){
 
   return kthread_join(n,(int *)s);
 }
+
+uint64
+sys_bsem_alloc(void)
+{
+  return bsem_alloc();
+}
+
+uint64
+sys_bsem_free(void)
+{
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  bsem_free(n);
+  return 0;
+}
+
+uint64
+sys_bsem_down(void)
+{
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  bsem_down(n);
+  return 0;
+}
+
+uint64
+sys_bsem_up(void)
+{
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  bsem_up(n);
+  return 0;
+}
