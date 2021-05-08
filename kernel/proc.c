@@ -65,6 +65,7 @@ procinit(void)
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
+      initlock(&p->signalHandlerLock, "signalHandlerLock");
       for(t = p->threads; t < &p->threads[NTHREAD]; t++){
         t->kstack = KSTACK(NTHREAD * (int) (p - proc) + (int) (t - p->threads));
         initlock(&t->lock, "thread");
@@ -951,7 +952,7 @@ void
 signalHandler()
 {
   struct proc* p = myproc();
-  acquire(&p->signalHandlerLock);
+  // acquire(&p->signalHandlerLock);
   if (!p || p->handling)
   {
     return;
@@ -960,7 +961,6 @@ signalHandler()
   for (int i = 0; i < 32; i++)
   {
     uint signumbit = (1 << i);
-    // check if the signal is pending and not masked
     if ((p->pendingSignal & signumbit) && !(p->signalMask & signumbit)  && (p->signalHandlers[i] != (void *)SIG_IGN))
     {
       if (p->signalHandlers[i] == (void *)SIGCONT)
@@ -1011,219 +1011,147 @@ signalHandler()
       }
     }
   }
-  release(&p->signalHandlerLock);
+  // release(&p->signalHandlerLock);
 }
 
-int
-kthread_create(void(*start_func)(), void *stack)
+int kthread_create(void (*start_func)(), void *stack)
 {
-  //printf("in kthread_create p: %p t: %p or %d\n",myproc(),mythread(),mythread()->index);
-
   struct proc *p = myproc();
   struct thread *t;
-  //printf("about to acquire p->lock in kthread_create %p id : d\n",mythread(),mythread()->index);
-
-  acquire(&p->lock); //probably vital, as we dont want the process to be freed during create a new thread.
-  
-  int i = 0; // will denote the index in the table for the new created thread
-
-  //check for an empty spot in p->threads to allocate a new thread
+  acquire(&p->lock); 
+  int threadIndex = 0; 
   for (t = p->threads; t < &p->threads[NTHREAD]; t++)
   {
-    //printf("about to acquire in kthread_create %p id : d\n",t,t->index);
     acquire(&t->lock);
-    //printf(" acquired in kthread_create %p id : d\n",t,t->index);
-
     if (t->state == T_UNUSED)
     {
-      //printf("found thread_is %p\n", t);
-      //important to change to used. we unlock the p, so now the process can again try to create a new thread. so we want to tell him that this slot is already took.
-      // maybe used it s not neccessery due to the locked t we hold.
-      t->state = T_USED;
-      release(&p->lock);
       goto found;
     }
-    else
-    {
+    else {
       release(&t->lock);
     }
-    i++;
+    threadIndex = threadIndex +1;
   }
-  // in case all slots are full, return -1 for a failure.
   release(&p->lock);
   return -1;
 
 found:
-  //printf("in kthread_create p: %p, found unused thread,:%d my thread is %d\n",myproc(), i, mythread()->index);
+  t->state = T_USED;
+  release(&p->lock);
 
-  if (allocThread(t,p,i) < 0) //TODO initthread can not return somthing else than 0, so maybe change here
-  {
-    // failure
-    t->state = UNUSED;
+  if(allocThread(t, p, threadIndex)){
     freeThread(t);
     release(&t->lock);
     return -1;
   }
-  //printf("t-p->threads is %d\n", t - p->threads);
+  t->state = RUNNABLE;
 
-  //copy the curr thread trapframe to the new thread and change its registers
   *(t->trapframe) = *(mythread()->trapframe);
-  t->trapframe->sp = (uint64)stack + MAXSTACKSIZE - 16;
   t->trapframe->epc = (uint64)start_func;
-
-  // now we can finaly change to runnable, after we finished the creation
-  t->state = RUNNABLE; //TODO: I'm not sure it is not the right place
-  //printf("in kthread_create, before return\n");
-
+  t->trapframe->sp = (uint64)stack + MAXSTACKSIZE - 16;
+  
   release(&t->lock);
   return t->tid;
 }
 
-int kthread_id(void)
-{
-  return mythread()->tid;
+int
+kthread_id(){
+  int tid =  mythread()->tid;
+  if(tid == 0)
+    return -1;
+  return tid;
 }
 
-void kthread_exit(int status)
-{
-  //printf("in kthread exit,p: %p t: %p id is: %d\n", myproc(), mythread(), mythread()->index);
+void
+kthread_exit(int status){
+
   struct proc *p = myproc();
-  struct thread *t = mythread();
+  struct thread *myT = mythread();
+  struct thread *t;
 
-  struct thread *nt;
-  int found = 0;
-
-
-  //here we check if we are the last thread that alive. its important to change to "zombie" right before we leave the function,
-  //in addition we may be the last thread so we dont want to change to "zombie" until we assure there are still alive thread.
-  //very important, to call "wake up" AFTER we change to zombie state, otherwise kthread join may miss this thread.
-  //lock here its vital to ensure two threads think they are not the last.
+  int onlyThread = 1;
   acquire(&p->lock);
-  for (nt = p->threads; nt < &p->threads[NTHREAD]; nt++)
-  {
-    if (nt != t)
-    {
-      //printf("in kthread exit, bfore acquire %p id: %d \n", nt,mythread()->index);
-      acquire(&nt->lock);
-      //printf("in kthread exit, acquired %p id: %d \n", nt,mythread()->index);
-      if (nt->state != T_UNUSED && nt->state != T_ZOMBIE)
-      {
-        //printf("kthread exit, found alive t: %p his status %d\n", nt,nt->state);
-        found = 1;
-        release(&nt->lock);
+  // check its the last thread
+  for(t = p->threads; t < &p->threads[NTHREAD]; t++){
+    if(t != myT){
+      acquire(&t->lock);
+      if(t->state != T_ZOMBIE &&  t->state != T_UNUSED){
+        onlyThread = 0;
+        release(&t->lock);
         break;
       }
-      release(&nt->lock);
+      release(&t->lock);
     }
   }
-  if (found == 0)
-  {
-    //in case we are the last thread, we will perform exit(), so meanwhile dont change to ZOMBIE
-    
-    acquire(&t->lock);
-    t->xstate = status;
-    release(&t->lock);
 
-    //imporant to release just after we change the status. now we can let another thread to check if he is the last
+  acquire(&myT->lock);
+  myT->xstate = status;
+  myT->state = T_ZOMBIE;
+  release(&myT->lock);
 
+  // didn't found other runnable threads
+  if(onlyThread){
     release(&p->lock);
-
-    //printf("e\n");//TODO delete
-    wakeup(t); //TODO: maybe unnecessery, because if we are the last, no one should wait for us.
-
     exit(status);
   }
-  else
+
+  release(&p->lock);
+  // wake up all thread that sleep on this thread
+  // before it terminates forgood and creates deadlock
+  wakeup(myT);
+  acquire(&myT->lock);
+  sched();
+};
+
+// if found return thread else 0
+struct thread*
+findThreadByTid(int tid, struct proc *p){
+  struct thread* curr_t;
+  for (curr_t = p->threads; curr_t < &p->threads[NTHREAD]; curr_t++)
   {
-    //printf("in kthread exit p: %p t: %p  found alive threads\n", myproc(),t);
-    
-    // in case some threads still alive, we change to zombie and then exit.
-    acquire(&t->lock);
-    t->xstate = status;
-    t->state = T_ZOMBIE;
-    release(&t->lock);
-
-    //imporant to release just after we change the status. now we can let another thread to check if he is the last
-    release(&p->lock);
-
-    //wake up should be called without any locks. 
-    wakeup(t);
-    acquire(&t->lock);
-    //printf("e\n");//TODO delte
-      
-
-    sched();
-    panic("zombie thread exit");
+    acquire(&curr_t->lock);
+    if(curr_t != mythread()){
+      if (curr_t->tid == tid)
+      {
+        release(&curr_t->lock);
+        return curr_t;
+      }
+    }
+    release(&curr_t->lock);
   }
-  
-  return;
+  return 0;
 }
 
-int kthread_join(int thread_id, int *status)
+int 
+kthread_join(int thread_id, int *status)
 {
-  //TODO: how we should treat the status?
-  //printf("in kthread join wait for id: %d\n", thread_id);
-  //"kthread join is between threads in the same process."
-  //"in kthread_join should we free thread thread_id that we wait to exit?" "Yes, you should free it."
   struct proc *p = myproc();
-  struct thread *t = mythread();
-
-  struct thread *nt;
-  int found;
-
-
-  // go over table and check for the specified thread_id .
-  found = 0;
-  for (nt = p->threads; nt < &p->threads[NTHREAD]; nt++)
-  {
-    //printf("nt id is %d\n", nt->tid);//TODO delete
-
-    acquire(&nt->lock);
-    if (nt->tid == thread_id && nt != t)
-    {
-      //printf("in kthread join, found thread ! his id is %p\n", nt);
-
-      found = 1;
-      release(&nt->lock);
-
-      break;
-    }
-    release(&nt->lock);
-  }
-  if (!found)
-  {
-    return -1;
-  }
+  struct thread *curr_t = findThreadByTid(thread_id, p);
   acquire(&wait_lock);
+  if (!curr_t)
+    return -1;
 
-  for (;;)
+  while(1)
   {
-    //printf("in kthread join, in main loop. my id is %d\n", t->tid);
-
-    acquire(&nt->lock);
-
-    //in case the thread has already been freed or reallocated
-    if (t->killed == 1 || nt->tid != thread_id)
+    acquire(&curr_t->lock);
+    if (curr_t->state == T_ZOMBIE)
     {
-
-      release(&nt->lock);
+      copyout(p->pagetable, (uint64)&status, (char *)&curr_t->xstate, sizeof(int));
+      freeThread(curr_t);
       release(&wait_lock);
+      release(&curr_t->lock);
+      return 0;
+    }
 
+    if (mythread()->killed == 1)
+    {
+      release(&wait_lock);
+      release(&curr_t->lock);
       return -1;
     }
 
-    if (nt->state == T_ZOMBIE)
-    {
-      freeThread(nt);
-
-      release(&nt->lock);
-      release(&wait_lock);
-
-      return 0;
-    }
-    //printf("in kthread join, before sleep. my id is %d\n", t->tid);
-    //in case the thread is still alive, wait until it becomes dead. it will wake up us in kthread_exit
-    release(&nt->lock);
-    sleep(nt, &wait_lock);
+    release(&curr_t->lock);
+    sleep(curr_t, &wait_lock);
   }
 }
+
