@@ -93,7 +93,6 @@ struct buf*
 bread(uint dev, uint blockno)
 {
   struct buf *b;
-
   b = bget(dev, blockno);
   if(!b->valid) {
     virtio_disk_rw(b, 0);

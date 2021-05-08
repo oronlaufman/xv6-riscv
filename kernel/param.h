@@ -18,3 +18,7 @@
 #define SIGKILL 9
 #define SIGSTOP 17
 #define SIGCONT 19
+
+#define NTHREAD           8      // maximum threads number
+#define MAXSTACKSIZE      4000   // maximum threads number
+

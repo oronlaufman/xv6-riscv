@@ -107,8 +107,6 @@ sys_sigaction(void){
   uint64 act;
   uint64 oldact;
 
-  // get the int and adesses from the stack
-  // also convert them to be pointer to our struct
   if(argint(0, &signum) < 0)
     return -1;
   
@@ -135,4 +133,48 @@ uint64
 sys_sigret(void){
   sigret();
   return 0;
+}
+
+uint64
+sys_kthread_create(void){
+
+  void (* start_func)(void);
+  void *stack;
+
+  if(argaddr(0, (void*)&start_func) < 0)
+    return -1;
+  
+  if(argaddr(1, (void*)&stack) < 0)
+    return -1;
+
+  return kthread_create(start_func, stack);
+
+}
+
+uint64
+sys_kthread_id(void){
+  return kthread_id();
+}
+
+
+uint64
+sys_kthread_exit(void){
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  
+  kthread_exit(n);
+  return 0;
+}
+
+uint64
+sys_kthread_join(void){
+  int n;
+  uint64 s;
+  if(argint(0, &n) < 0)
+    return -1;
+  if(argaddr(1, &s) < 0)
+    return -1;
+
+  return kthread_join(n,(int *)s);
 }

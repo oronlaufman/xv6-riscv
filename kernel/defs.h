@@ -94,6 +94,7 @@ int             kill(int,int);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
+struct thread*  mythread();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
@@ -107,9 +108,12 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 int             sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
-uint            sigprocmask (uint sigmask);
+uint            sigprocmask(uint sigmask);
 void            sigret(void);
-void            signalHandler(void);
+int             kthread_create(void(*start_func)(), void *stack);
+int             kthread_id (void);
+void            kthread_exit(int status);
+int             kthread_join(int thread_id, int* status);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

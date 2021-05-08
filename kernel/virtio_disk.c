@@ -275,7 +275,6 @@ virtio_disk_rw(struct buf *b, int write)
 
   disk.info[idx[0]].b = 0;
   free_chain(idx[0]);
-
   release(&disk.vdisk_lock);
 }
 

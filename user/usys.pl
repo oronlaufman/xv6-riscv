@@ -39,3 +39,7 @@ entry("uptime");
 entry("sigprocmask");
 entry("sigaction");
 entry("sigret");
+entry("kthread_create");
+entry("kthread_id");
+entry("kthread_exit");
+entry("kthread_join");
