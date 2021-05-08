@@ -13,6 +13,8 @@ extern char trampoline[], uservec[], userret[];
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
+
+// in proc.c, calls kerneltrapret().
 void signalHandler();
 
 extern int devintr();
@@ -162,8 +164,11 @@ kerneltrap()
     panic("kerneltrap");
   }
 
+  struct proc *p = myproc();
+  struct thread *t = mythread();
+
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && mythread() != 0 && mythread()->state == RUNNING && myproc() != 0 && myproc()->state == ALIVE)
+  if(which_dev == 2 && t != 0 && t->state == RUNNING && p != 0 && p->state == ALIVE)
     yield();
 
   // the yield() may have caused some traps to occur,
