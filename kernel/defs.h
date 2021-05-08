@@ -9,6 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct sigaction;
+struct counting_semaphore;
 
 // bio.c
 void            binit(void);
@@ -114,6 +115,10 @@ int             kthread_create(void(*start_func)(), void *stack);
 int             kthread_id (void);
 void            kthread_exit(int status);
 int             kthread_join(int thread_id, int* status);
+int             bsem_alloc();
+void            bsem_free(int);
+void            bsem_down(int);
+void            bsem_up(int);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -191,6 +196,12 @@ void            plic_complete(int);
 void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
+
+// Csemaphore.c
+int             csem_alloc(struct counting_semaphore*, int);
+void            csem_free(struct counting_semaphore*);
+void            csem_down(struct counting_semaphore*);
+void            csem_up (struct counting_semaphore*);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

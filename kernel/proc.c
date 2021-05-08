@@ -13,6 +13,8 @@ struct proc proc[NPROC];
 
 struct proc *initproc;
 
+static int semaphores[MAX_BSEM];
+
 int nextpid = 1;
 int nexttid = 1;
 
@@ -21,6 +23,7 @@ struct spinlock tid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+void initializeBinSem();
 
 extern void *start_sigret_injection(void);
 extern void *end_sigret_injection(void);
@@ -68,7 +71,8 @@ void procinit(void)
   for (p = proc; p < &proc[NPROC]; p++)
   {
     initlock(&p->lock, "proc");
-    initlock(&p->signalHandlerLock, "signalHandlerLock");
+    // initlock(&p->signalHandlerLock, "signalHandlerLock"); TODO
+    initlock(&p->semaphoreLock, "semaphoreLock");
 
     for (t = p->threads; t < &p->threads[NTHREAD]; t++)
     {
@@ -236,6 +240,8 @@ found:
   p->pendingSignal = 0;
   p->signalMask = 0;
 
+  p->semaphoreNum = -1;
+
   return p;
 }
 
@@ -365,6 +371,8 @@ void userinit(void)
 
   release(&p->lock);
   release(&p->threads[0].lock);
+
+  initializeBinSem();
 }
 
 // Grow or shrink user memory by n bytes.
@@ -652,8 +660,6 @@ int wait(uint64 addr)
 //    via swtch back to the scheduler.
 void scheduler(void)
 {
-  // struct proc *p;
-  // struct thread *t; TODO
   struct cpu *c = mycpu();
   c->proc = 0;
   for (;;)
@@ -670,7 +676,6 @@ void scheduler(void)
 
       for (struct thread *t = p->threads; t < &p->threads[NTHREAD]; t++)
       {
-        // printf("%d is about to acquire its lock\n", t->tid);
         acquire(&t->lock);
         if (t->state == RUNNABLE)
         {
@@ -785,9 +790,6 @@ void sleep(void *chan, struct spinlock *lk)
 // Must be called without any p->lock.
 void wakeup(void *chan)
 {
-  // struct proc *p;
-  // struct thread *t; TODO
-
   for (struct proc *p = proc; p < &proc[NPROC]; p++)
   {
     if (p->state != ALIVE)
@@ -814,9 +816,6 @@ void wakeup(void *chan)
 // to user space (see usertrap() in trap.c).
 int kill(int pid, int signum)
 {
-  // struct proc *p;
-  // struct thread *t; TODO
-
   for (struct proc *p = proc; p < &proc[NPROC]; p++)
   {
     acquire(&p->lock);
@@ -902,7 +901,6 @@ void procdump(void)
       [RUNNING] "run   ",
       [ZOMBIE] "zombie"};
   
-  // struct proc *p; TODO
   char *state;
   acquire(&wait_lock);
   printf("\n");
@@ -1209,4 +1207,74 @@ int kthread_join(int thread_id, int *status)
     release(&curr_t->lock);
     sleep(curr_t, &wait_lock);
   }
+  p->killed = 1;
+}
+
+void
+initializeBinSem()
+{
+  for (int i = 0; i < MAX_BSEM; i++)
+  {
+    semaphores[i] = -1;
+  }
+}
+
+int
+bsem_alloc()
+{
+  acquire(&wait_lock);
+	for (int i = 0; i < MAX_BSEM; i++) {
+		if (semaphores[i] == -1) {
+			semaphores[i] = 1;
+      release(&wait_lock);
+			return i;
+		} 
+	}
+  release(&wait_lock);
+	return -1;
+}
+
+void
+bsem_free(int sem)
+{
+  acquire(&wait_lock);
+  semaphores[sem] = -1;
+  release(&wait_lock);
+}
+
+void
+bsem_down(int sem)
+{
+  acquire(&wait_lock);
+  if (semaphores[sem] == -1)
+  {
+    panic("wrong semaphore- down");
+  }
+  for (;;)
+  {
+    if (semaphores[sem] == 0)
+    {
+      sleep(&semaphores[sem], &wait_lock);
+    }
+    else
+    {
+      semaphores[sem] = 0;
+      break;
+    }
+  }
+  release(&wait_lock);
+}
+
+void
+bsem_up(int sem)
+{
+  acquire(&wait_lock);
+  if (semaphores[sem] == -1)
+  {
+    panic("wrong semaphore- up");
+  }
+
+  semaphores[sem] = 1;
+  wakeup(&semaphores[sem]);
+  release(&wait_lock);
 }
